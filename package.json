@@ -7,6 +7,7 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder",
+    "build:unsigned": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
     "dist": "electron-builder",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
