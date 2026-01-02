@@ -2,6 +2,8 @@
 
 RogueLLMania is a roguelike built with Electron and rot.js, featuring LLM-powered narration as its core experience. The game can be played without the LLM enabled, but narration will use simpler, deterministic text.
 
+<img width="990" height="760" alt="Screenshot 2025-08-16 at 2 25 47 PM" src="https://github.com/user-attachments/assets/f7e20f2b-78b2-4716-bc24-b812c7f33ca3" />
+
 ## Quickstart
 
 1. Install prerequisites
