@@ -13,7 +13,8 @@
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder -mwl",
-    "clean": "rm -rf dist/*"
+    "clean": "rm -rf dist/*",
+    "download-ollama": "node scripts/download-ollama.js"
   },
   "keywords": [
     "roguelike",
