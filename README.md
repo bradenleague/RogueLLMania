@@ -45,6 +45,26 @@ RogueLLMania is a roguelike built with Electron and rot.js, featuring LLM-powere
 - Restart (only when Game Over): R
 - Close overlays: Esc
 
+## Testing & Quality
+
+RogueLLMania includes a comprehensive testing framework for validating and improving LLM-generated narration quality:
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm test:watch
+
+# Run with coverage
+npm test:coverage
+
+# Run benchmarks to track quality over time
+npm run benchmark
+```
+
+See [tests/README.md](tests/README.md) for detailed testing documentation and [docs/PROMPT_IMPROVEMENT_GUIDE.md](docs/PROMPT_IMPROVEMENT_GUIDE.md) for tips on improving narration quality.
+
 ## LLM Settings
 
 - Open the settings overlay (gear icon in the top-right).
