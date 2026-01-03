@@ -1,30 +1,29 @@
-import { getOllamaModel } from './systems/settings.js';
+import { getLLMModel } from './systems/settings.js';
 import { appendLevelIntroductionText, setLevelIntroductionText } from './ui/overlays/levelIntro.js';
 
 const { ipcRenderer } = window.require('electron');
 
 export async function generateDescription(prompt) {
     try {
-        const model = await getOllamaModel();
-        const result = await ipcRenderer.invoke('ollama-generate', {
+        const model = 'qwen:1.5b';
+        const result = await ipcRenderer.invoke('llm-generate', {
             model: model,
             prompt: prompt,
             stream: false
         });
         
         if (!result.success) {
-            // Enhanced error handling with user-friendly messages
             let userError = result.error;
             
-            if (result.errorType === 'CONNECTION_ERROR') {
-                userError = 'Cannot connect to Ollama service. Please make sure Ollama is running.';
-            } else if (result.errorType === 'MODEL_NOT_FOUND') {
-                userError = `Model '${model}' not found. Check your settings or pull the model.`;
-            } else if (result.errorType === 'SERVER_ERROR') {
-                userError = 'Ollama server error. Please check your Ollama installation.';
+            if (result.errorType === 'NOT_INITIALIZED') {
+                userError = 'LLM system not initialized. Please restart the application.';
+            } else if (result.errorType === 'GENERATION_ERROR') {
+                userError = 'Failed to generate content. The model may be too large for your system.';
+            } else if (result.error && result.error.includes('Model file not found')) {
+                userError = 'No model downloaded. Open Settings (⚙️) to download a model.';
             }
             
-            console.error('Ollama generation failed:', {
+            console.error('LLM generation failed:', {
                 error: result.error,
                 errorType: result.errorType,
                 model: model
@@ -35,16 +34,15 @@ export async function generateDescription(prompt) {
             throw err;
         }
         
-        return result.data.response || 'No description generated.';
+        return result.text || 'No description generated.';
     } catch (error) {
         console.error('Error generating description:', error);
-        // Do not write to UI overlays here; callers decide how to surface errors
         throw error;
     }
-} 
+}
 
 export async function streamDescription(prompt, { onToken } = {}) {
-    const model = await getOllamaModel();
+    const model = 'qwen:1.5b';
     return new Promise((resolve, reject) => {
         try {
             let full = '';
@@ -167,23 +165,22 @@ export async function streamDescription(prompt, { onToken } = {}) {
 
             const handler = (event, data) => {
                 try {
-                    const piece = data?.response || '';
+                    const piece = data?.content || '';
                     if (piece) {
                         full += piece;
                         buffer += piece;
                         processBuffer();
                     }
-                    if (data?.done) {
-                        cleanup();
-                        if (full && !/<description>/i.test(full)) {
-                            const cleaned = full.replace(/```[\s\S]*?```/g, '').replace(/<[^>]*>/g, '').trim();
-                            try { appendLevelIntroductionText(cleaned); } catch {}
-                        }
-                        resolve(full);
-                    }
                 } catch (e) {}
             };
-            const endHandler = () => { cleanup(); resolve(full); };
+            const endHandler = () => { 
+                cleanup();
+                if (full && !/<description>/i.test(full)) {
+                    const cleaned = full.replace(/```[\s\S]*?```/g, '').replace(/<[^>]*>/g, '').trim();
+                    try { appendLevelIntroductionText(cleaned); } catch {}
+                }
+                resolve(full);
+            };
             const errorHandler = (event, payload) => {
                 cleanup();
                 const err = new Error(payload?.error || 'Stream error');
@@ -192,14 +189,14 @@ export async function streamDescription(prompt, { onToken } = {}) {
             };
             function cleanup() {
                 clearTimeout(softModeTimer);
-                ipcRenderer.removeListener('ollama-generate-stream-data', handler);
-                ipcRenderer.removeListener('ollama-generate-stream-end', endHandler);
-                ipcRenderer.removeListener('ollama-generate-stream-error', errorHandler);
+                ipcRenderer.removeListener('llm-generate-stream-data', handler);
+                ipcRenderer.removeListener('llm-generate-stream-end', endHandler);
+                ipcRenderer.removeListener('llm-generate-stream-error', errorHandler);
             }
-            ipcRenderer.on('ollama-generate-stream-data', handler);
-            ipcRenderer.on('ollama-generate-stream-end', endHandler);
-            ipcRenderer.on('ollama-generate-stream-error', errorHandler);
-            ipcRenderer.send('ollama-generate-stream', { model, prompt });
+            ipcRenderer.on('llm-generate-stream-data', handler);
+            ipcRenderer.on('llm-generate-stream-end', endHandler);
+            ipcRenderer.on('llm-generate-stream-error', errorHandler);
+            ipcRenderer.send('llm-generate-stream', { model, prompt });
         } catch (err) {
             reject(err);
         }

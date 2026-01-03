@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "RogueLLMania – a minimal roguelike built with Electron and rot.js",
   "main": "src/main.js",
+  "type": "module",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
@@ -13,8 +14,7 @@
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder -mwl",
-    "clean": "rm -rf dist/*",
-    "download-ollama": "node scripts/download-ollama.js"
+    "clean": "rm -rf dist/*"
   },
   "keywords": [
     "roguelike",
@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "electron-store": "^10.1.0",
+    "node-llama-cpp": "^3.14.5",
     "rot-js": "^2.2.0"
   },
   "build": {
@@ -43,8 +44,10 @@
     "files": [
       "public/**/*",
       "src/**/*",
-      "node_modules/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/node-llama-cpp/**"
     ],
     "mac": {
       "target": [

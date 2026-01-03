@@ -1,177 +1,125 @@
-const os = require('os');
-const path = require('path');
-const fs = require('fs').promises;
+import { join } from 'path';
+import { existsSync } from 'fs';
+import os from 'os';
+import { info } from '../../systems/logger.js';
 
-class ConfigManager {
-  constructor(options = {}) {
-    this.appDataPath = options.appDataPath;
-    this.dataPath = options.dataPath || this.getDefaultDataPath();
-    this.config = {
-      ollama: {
-        defaultModel: this.getDefaultModel(),
-        port: null,
-        host: '127.0.0.1',
-        startupTimeout: 30000,
-        maxRetries: 3
-      },
-      models: {
-        recommended: this.getRecommendedModels()
-      },
-      memory: this.detectSystemMemory()
+export class ConfigManager {
+  constructor({ appDataPath } = {}) {
+    this.appDataPath = appDataPath;
+    this.settings = new Map();
+    this.platform = process.platform;
+    
+    this.initializeDefaults();
+    this.detectMemory();
+  }
+
+  initializeDefaults() {
+    this.set('llm.model', 'qwen:1.5b');
+    this.set('llm.enabled', true);
+    this.set('llm.gpu', true);
+    this.set('llm.contextSize', 8192);
+    this.set('llm.temperature', 0.7);
+    this.set('llm.maxTokens', 500);
+    this.set('llm.threads', 4);
+  }
+
+  getMemoryInfo() {
+    return {
+      total: this.totalRam,
+      free: this.freeRam,
+      platform: this.platform
     };
   }
 
-  getDefaultDataPath() {
-    const platform = process.platform;
-    let baseDir;
-
-    if (platform === 'darwin') {
-      baseDir = path.join(os.homedir(), 'Library', 'Application Support', 'RogueLLMania');
-    } else if (platform === 'win32') {
-      baseDir = path.join(os.homedir(), 'AppData', 'Local', 'RogueLLMania');
-    } else {
-      baseDir = path.join(os.homedir(), '.roguellmania');
-    }
-
-    return path.join(baseDir, 'ollama');
+  getTotalRAM() {
+    return this.totalRam || 0;
   }
 
-  detectSystemMemory() {
-    try {
-      const totalMemGB = Math.round(os.totalmem() / (1024 * 1024 * 1024));
-      const freeMemGB = Math.round(os.freemem() / (1024 * 1024 * 1024));
-      
-      return {
-        total: totalMemGB,
-        free: freeMemGB,
-        isLowMemory: totalMemGB < 8,
-        canRun7B: totalMemGB >= 8,
-        canRun14B: totalMemGB >= 16
-      };
-    } catch (error) {
-      console.warn('Failed to detect system memory:', error);
-      return {
-        total: 16,
-        free: 8,
-        isLowMemory: false,
-        canRun7B: true,
-        canRun14B: false
-      };
-    }
+  getFreeRAM() {
+    return this.freeRam || 0;
   }
 
-  getDefaultModel() {
-    const mem = this.detectSystemMemory();
-    if (mem.isLowMemory) {
-      return 'phi3:mini';
-    }
-    return 'gemma3n:e4b';
+  detectMemory() {
+    const total = os.totalmem();
+    const free = os.freemem();
+    
+    this.totalRam = Math.round(total / (1024 * 1024 * 1024));
+    this.freeRam = Math.round(free / (1024 * 1024 * 1024));
+    
+    info(`Memory detected: ${this.totalRam}GB total, ${this.freeRam}GB free`);
   }
 
-  getRecommendedModels() {
-    const mem = this.detectSystemMemory();
-    const models = [
-      {
-        name: 'phi3:mini',
-        size: '2.2GB',
-        sizeBytes: 2.2 * 1024 * 1024 * 1024,
-        ramRequired: 4,
-        description: 'Fast, efficient for low-RAM systems',
-        recommendedFor: ['all', 'low-memory'],
-        default: mem.isLowMemory
-      },
-      {
-        name: 'gemma3n:e4b',
-        size: '2.5GB',
-        sizeBytes: 2.5 * 1024 * 1024 * 1024,
-        ramRequired: 6,
-        description: 'Good balance of quality and speed',
-        recommendedFor: ['all'],
-        default: !mem.isLowMemory
-      }
-    ];
-
-    if (mem.canRun7B) {
-      models.push({
-        name: 'llama3.2:3b',
-        size: '2.0GB',
-        sizeBytes: 2.0 * 1024 * 1024 * 1024,
-        ramRequired: 8,
-        description: 'Higher quality for systems with 8GB+ RAM',
-        recommendedFor: ['standard', 'high-memory']
-      });
-    }
-
-    if (mem.canRun14B) {
-      models.push({
-        name: 'llama3.2:7b',
-        size: '4.5GB',
-        sizeBytes: 4.5 * 1024 * 1024 * 1024,
-        ramRequired: 16,
-        description: 'Best quality for systems with 16GB+ RAM',
-        recommendedFor: ['high-memory']
-      });
-    }
-
-    return models;
+  getModelDir() {
+    return join(this.appDataPath, 'models', 'qwen2.5', 'main');
   }
 
-  get(key) {
-    const keys = key.split('.');
-    let value = this.config;
-    for (const k of keys) {
-      value = value?.[k];
-      if (value === undefined) break;
-    }
-    return value;
+  getTargetModel() {
+    return {
+      id: 'qwen:1.5b',
+      name: 'Qwen2.5-1.5B-Instruct',
+      revision: '91cad51170dc346986eccefdc2dd33a9da36ead9',
+      filename: 'qwen2.5-1.5b-instruct-q4_k_m.gguf',
+      url: 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf?download=true',
+      expectedSize: 1117320736,
+      sha256: '6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e',
+      etag: '6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e',
+      sizeGB: 1.04,
+      size: '1.04GB',
+      ramRequired: 3,
+      contextSize: 8192,
+      format: 'GGUF',
+      description: 'Optimized 1.5B model with excellent performance/size ratio'
+    };
   }
 
-  set(key, value) {
-    const keys = key.split('.');
-    const lastKey = keys.pop();
-    let target = this.config;
-    for (const k of keys) {
-      if (!target[k]) target[k] = {};
-      target = target[k];
-    }
-    target[lastKey] = value;
+  getModelById(modelId) {
+    const target = this.getTargetModel();
+    return target.id === modelId ? target : null;
   }
 
-  getAll() {
-    return JSON.parse(JSON.stringify(this.config));
-  }
+  validateModelRequirements(model) {
+    const availableRam = this.totalRam;
 
-  async ensureDirectories() {
-    const dirs = [
-      this.dataPath,
-      path.join(this.dataPath, 'models'),
-      path.join(this.dataPath, 'logs')
-    ];
-
-    for (const dir of dirs) {
-      try {
-        await fs.mkdir(dir, { recursive: true });
-      } catch (error) {
-        console.warn(`Failed to create directory ${dir}:`, error);
-      }
-    }
-  }
-
-  validateModelChoice(modelName) {
-    const model = this.get('models.recommended').find(m => m.name === modelName);
-    if (!model) return { valid: false, reason: 'Model not found' };
-
-    const mem = this.get('memory');
-    if (model.ramRequired > mem.total) {
+    if (model.ramRequired && availableRam < model.ramRequired) {
       return {
         valid: false,
-        reason: `Model requires ${model.ramRequired}GB RAM, but system has ${mem.total}GB`,
-        warning: true
+        reason: `Insufficient RAM. Required: ${model.ramRequired}GB, Available: ${availableRam}GB`
       };
     }
 
     return { valid: true };
   }
-}
 
-module.exports = ConfigManager;
+  set(key, value) {
+    this.settings.set(key, value);
+  }
+
+  get(key, defaultValue) {
+    return this.settings.get(key) ?? defaultValue;
+  }
+
+  getAll() {
+    return Object.fromEntries(this.settings);
+  }
+
+  getPlatform() {
+    return this.platform;
+  }
+
+  isPlatform(platform) {
+    return this.platform === platform;
+  }
+
+  supportsGPU() {
+    if (this.isPlatform('darwin')) {
+      return true;
+    }
+    if (this.isPlatform('linux')) {
+      return true;
+    }
+    if (this.isPlatform('win32')) {
+      return true;
+    }
+    return false;
+  }
+}

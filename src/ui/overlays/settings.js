@@ -1,4 +1,4 @@
-import { getAllSettings, setOllamaModel, setLLMEnabled, getFullscreen, setFullscreen, applyWindowPreset } from '../../systems/settings.js';
+import { getAllSettings, setLLMModel, setLLMEnabled, getFullscreen, setFullscreen, applyWindowPreset } from '../../systems/settings.js';
 import { register, open as openOverlay, close as closeOverlay, isOpen as isOverlayOpen } from '../overlayManager.js';
 
 let overlayRootEl = null;
@@ -40,10 +40,13 @@ export async function toggleSettings() {
 
 async function updateSettingsDisplay(root) {
   const settings = await getAllSettings();
-  
+
   // Fetch model information
   await fetchModelInfo();
-  
+
+  const model = availableModels[0] || { name: 'Qwen2.5-1.5B-Instruct', size: '1.12GB' };
+  const isDownloaded = downloadedModels.length > 0;
+
   if (!root) return;
   root.innerHTML = `
     <div class="settings-header">
@@ -51,25 +54,20 @@ async function updateSettingsDisplay(root) {
       <div class="settings-sub">Configure game options</div>
     </div>
     <div class="settings-field">
-      <label class="settings-label">LLM Model:</label>
-      <select id="modelSelect" class="settings-input">
-        <option value="custom">Custom...</option>
-        ${availableModels.map(m => `
-          <option value="${m.name}" ${settings.ollamaModel === m.name ? 'selected' : ''}>
-            ${m.name} (${m.size}) ${m.default ? '[Recommended]' : ''} ${downloadedModels.some(d => d.name.startsWith(m.name)) ? '[✓]' : ''}
-          </option>
-        `).join('')}
-      </select>
-      <div class="settings-help">Select a model or enter custom model name</div>
-    </div>
-    <div class="settings-field" id="customModelField" style="display: ${isCustomModel(settings.ollamaModel) ? 'block' : 'none'}">
-      <label class="settings-label">Custom Model Name:</label>
-      <input type="text" id="ollamaModelInput" class="settings-input" value="${isCustomModel(settings.ollamaModel) ? settings.ollamaModel : ''}" placeholder="e.g., gemma3n:e4b" />
-      <div class="settings-help">Enter custom Ollama model name</div>
-    </div>
-    <div class="settings-field" id="modelActionsField">
-      <button id="downloadModelButton" class="btn btn-small">Download Selected Model</button>
-      <button id="deleteModelButton" class="btn btn-small btn-danger">Delete Model</button>
+      <label class="settings-label">AI Model:</label>
+      <div class="settings-model-status">
+        <span class="model-name">${model.name}</span>
+        <span class="model-info">(${model.size})</span>
+      </div>
+      <div class="model-status-indicator ${isDownloaded ? 'installed' : 'not-installed'}">
+        ${isDownloaded ? '✓ Installed' : '⚠ Not Installed'}
+      </div>
+      ${isDownloaded ? '' : `
+        <button id="downloadModelButton" class="btn btn-small btn-primary">Download Model (1.12GB)</button>
+      `}
+      ${isDownloaded ? `
+        <button id="deleteModelButton" class="btn btn-small btn-danger">Delete Model</button>
+      ` : ''}
     </div>
     <div class="settings-field" id="downloadProgressField" style="display: none;">
       <div class="download-progress">
@@ -106,7 +104,7 @@ async function updateSettingsDisplay(root) {
       <div class="settings-help">Applied immediately</div>
     </div>
     <div class="settings-actions">
-      <button id="testConnectionButton" class="btn">TEST CONNECTION</button>
+      <button id="testConnectionButton" class="btn" ${!isDownloaded ? 'disabled' : ''}>TEST CONNECTION</button>
       <button id="saveSettingsButton" class="btn btn-primary">SAVE</button>
       <button id="cancelSettingsButton" class="btn btn-danger">CANCEL</button>
     </div>
@@ -115,18 +113,6 @@ async function updateSettingsDisplay(root) {
   root.querySelector('#testConnectionButton').addEventListener('click', () => testConnection(root));
   root.querySelector('#saveSettingsButton').addEventListener('click', () => saveSettings(root));
   root.querySelector('#cancelSettingsButton').addEventListener('click', closeSettings);
-
-  const modelSelect = root.querySelector('#modelSelect');
-  modelSelect?.addEventListener('change', (e) => {
-    const customField = root.querySelector('#customModelField');
-    if (e.target.value === 'custom') {
-      customField.style.display = 'block';
-    } else {
-      customField.style.display = 'none';
-      const customInput = root.querySelector('#ollamaModelInput');
-      if (customInput) customInput.value = e.target.value;
-    }
-  });
 
   root.querySelector('#downloadModelButton')?.addEventListener('click', () => downloadModel(root));
   root.querySelector('#deleteModelButton')?.addEventListener('click', () => deleteModel(root));
@@ -165,19 +151,12 @@ async function fetchModelInfo() {
   }
 }
 
-function isCustomModel(modelName) {
-  return !availableModels.some(m => m.name === modelName);
-}
-
 async function saveSettings(root) {
-  const modelInput = root.querySelector('#ollamaModelInput');
   const enableLLMCheckbox = root.querySelector('#enableLLMCheckbox');
   const fullscreenCheckbox = root.querySelector('#fullscreenCheckbox');
-  if (!modelInput || enableLLMCheckbox == null) return;
+  if (enableLLMCheckbox == null) return;
   try {
-    const newModel = modelInput.value.trim();
     const newLLMEnabled = enableLLMCheckbox.checked;
-    if (newModel) await setOllamaModel(newModel);
     await setLLMEnabled(newLLMEnabled);
     if (fullscreenCheckbox) await setFullscreen(fullscreenCheckbox.checked);
     showSettingsSaved(root);
@@ -197,23 +176,19 @@ function showSettingsSaved(root) {
 }
 
 async function testConnection(root) {
-  const modelInput = root.querySelector('#ollamaModelInput');
   const enableLLMCheckbox = root.querySelector('#enableLLMCheckbox');
   const testButton = root.querySelector('#testConnectionButton');
-  if (!modelInput || !enableLLMCheckbox) return;
+  if (!enableLLMCheckbox) return;
   testButton.innerHTML = 'TESTING...';
   testButton.disabled = true;
   try {
-    const newModel = modelInput.value.trim();
     const newLLMEnabled = enableLLMCheckbox.checked;
-    if (newModel) await setOllamaModel(newModel);
     await setLLMEnabled(newLLMEnabled);
     const { ipcRenderer } = window.require ? window.require('electron') : { ipcRenderer: null };
     if (!ipcRenderer) {
       showTestResult(root, 'Electron IPC not available in this environment.', 'error');
     } else {
-      const model = newModel || 'gemma3n:e4b';
-      const result = await ipcRenderer.invoke('ollama-test-connection', { model });
+      const result = await ipcRenderer.invoke('llm-test-connection', { model: 'qwen:1.5b' });
       if (result.success) showTestResult(root, `${result.message}\n\n✓ Settings have been saved.`, 'success');
       else showTestResult(root, `${result.error}\n\n⚠️ Settings were saved, but connection test failed.`, 'error');
     }
@@ -241,46 +216,30 @@ function showTestResult(root, message, type) {
 }
 
 async function downloadModel(root) {
-  const modelSelect = root.querySelector('#modelSelect');
-  const customInput = root.querySelector('#ollamaModelInput');
   const downloadButton = root.querySelector('#downloadModelButton');
   const progressField = root.querySelector('#downloadProgressField');
-  
-  if (!modelSelect) return;
-  
-  let modelName = modelSelect.value === 'custom' 
-    ? customInput?.value.trim() 
-    : modelSelect.value;
-    
-  if (!modelName) {
-    alert('Please select or enter a model name');
-    return;
-  }
-  
+
   downloadButton.disabled = true;
   downloadButton.textContent = 'Downloading...';
   progressField.style.display = 'block';
-  
+
   try {
     const { ipcRenderer } = window.require ? window.require('electron') : { ipcRenderer: null };
     if (!ipcRenderer) throw new Error('IPC not available');
-    
-    // Set up progress listener
+
     const progressListener = (event, progress) => {
-      if (progress.modelName === modelName) {
-        updateDownloadProgress(root, progress);
-      }
+      updateDownloadProgress(root, progress);
     };
-    
-    ipcRenderer.on('llm-model-download-progress', progressListener);
-    
-    const result = await ipcRenderer.invoke('llm-download-model', { model: modelName });
-    
-    ipcRenderer.removeListener('llm-model-download-progress', progressListener);
-    
+
+    ipcRenderer.on('model-download-progress', progressListener);
+
+    const result = await ipcRenderer.invoke('llm-download-model', { model: 'qwen:1.5b' });
+
+    ipcRenderer.removeListener('model-download-progress', progressListener);
+
     if (result.success) {
       await fetchModelInfo();
-      alert(`Model '${modelName}' downloaded successfully!`);
+      alert('Qwen2.5 model downloaded successfully!');
       await updateSettingsDisplay(root);
     } else {
       throw new Error(result.error || 'Download failed');
@@ -290,7 +249,7 @@ async function downloadModel(root) {
     alert(`Failed to download model: ${error.message}`);
   } finally {
     downloadButton.disabled = false;
-    downloadButton.textContent = 'Download Selected Model';
+    downloadButton.textContent = 'Download Model (1.12GB)';
     progressField.style.display = 'none';
   }
 }
@@ -315,28 +274,20 @@ function updateDownloadProgress(root, progress) {
 }
 
 async function deleteModel(root) {
-  const modelInput = root.querySelector('#ollamaModelInput');
-  if (!modelInput) return;
-  
-  const modelName = modelInput.value.trim();
-  if (!modelName) {
-    alert('Please enter a model name to delete');
+  if (!confirm('Are you sure you want to delete the Qwen2.5 model? This will require redownloading ~1.12GB.')) {
     return;
   }
-  
-  if (!confirm(`Are you sure you want to delete model '${modelName}'?`)) {
-    return;
-  }
-  
+
   try {
     const { ipcRenderer } = window.require ? window.require('electron') : { ipcRenderer: null };
     if (!ipcRenderer) throw new Error('IPC not available');
-    
-    const result = await ipcRenderer.invoke('llm-delete-model', { model: modelName });
-    
+
+    const result = await ipcRenderer.invoke('llm-delete-model', { model: 'qwen:1.5b' });
+
     if (result.success) {
       await fetchModelInfo();
-      alert(`Model '${modelName}' deleted successfully!`);
+      alert('Qwen2.5 model deleted successfully!');
+      await updateSettingsDisplay(root);
     } else {
       throw new Error(result.error || 'Delete failed');
     }
