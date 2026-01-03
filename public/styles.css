@@ -561,3 +561,239 @@ body {
   color: #fff;
 }
 
+/* Start Screen */
+#startScreen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.start-screen-content {
+  text-align: center;
+  max-width: 600px;
+  padding: var(--space-4);
+}
+
+.start-title {
+  font-size: clamp(32px, 5vw, 48px);
+  color: var(--accent);
+  margin: 0 0 var(--space-2) 0;
+  font-weight: bold;
+}
+
+.start-subtitle {
+  font-size: var(--font-md);
+  color: var(--muted);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.start-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  color: var(--muted);
+}
+
+.status-indicator {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.status-indicator.checking {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Download Section */
+.download-info {
+  text-align: left;
+  background: var(--panel);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  margin: var(--space-3) 0;
+  border: 1px solid #333;
+}
+
+.download-info p {
+  margin: 0 0 var(--space-2) 0;
+  color: var(--fg);
+}
+
+.download-info p:last-child {
+  margin-bottom: 0;
+}
+
+.download-details {
+  color: var(--muted);
+  font-size: var(--font-sm);
+  line-height: 1.6;
+}
+
+.download-note {
+  margin-top: var(--space-2);
+  font-size: var(--font-sm);
+}
+
+.model-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.model-link:hover {
+  text-decoration: underline;
+}
+
+.download-progress-section {
+  text-align: left;
+  margin: var(--space-3) 0;
+}
+
+.download-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.download-phase {
+  font-size: var(--font-sm);
+  color: var(--accent);
+  margin-left: auto;
+}
+
+.resuming-badge {
+  background: var(--hp-warn);
+  color: #000;
+  padding: 2px 8px;
+  font-size: var(--font-sm);
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.download-title {
+  font-weight: bold;
+  color: var(--fg);
+}
+
+.download-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-sm);
+  margin-bottom: var(--space-2);
+}
+
+.download-amount {
+  color: var(--muted);
+}
+
+.download-percent {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.download-speed-info {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  font-size: var(--font-sm);
+  color: var(--muted);
+  margin-top: var(--space-2);
+}
+
+.start-note {
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--font-sm);
+  margin-top: var(--space-4);
+}
+
+/* Ready State */
+.ready-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--panel);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  margin: var(--space-3) 0;
+  border: 1px solid var(--hp-ok);
+}
+
+.ready-indicator {
+  color: var(--hp-ok);
+  flex-shrink: 0;
+}
+
+.ready-text h2 {
+  margin: 0 0 4px 0;
+  font-size: var(--font-md);
+  color: var(--fg);
+}
+
+.ready-text p {
+  margin: 0;
+  font-size: var(--font-sm);
+  color: var(--muted);
+}
+
+.model-location {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: var(--space-3);
+  background: var(--panel);
+  border-radius: var(--radius);
+}
+
+.location-label {
+  font-size: var(--font-sm);
+  color: var(--muted);
+}
+
+.location-path {
+  background: #111;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: var(--font-sm);
+  color: var(--accent);
+  word-break: break-all;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Button sizes */
+.btn-large {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-md);
+  width: 100%;
+  max-width: 300px;
+}
+
+.btn-small {
+  padding: 4px 12px;
+  font-size: var(--font-sm);
+}
+
+/* Hide game container initially */
+#gameContainer {
+  display: none;
+}
+

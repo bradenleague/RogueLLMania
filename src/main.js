@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron';
 import path from 'path';
 import { createLlamaSystem } from './main/llm/index.js';
 import { info, error, warn, debug } from './systems/logger.js';
@@ -7,6 +7,7 @@ let mainWindow;
 let store; // Will be initialized with dynamic import
 let llmBridge; // New LLM bridge instance
 let llmInitialized = false;
+let downloadJustCompleted = false;
 
 // Initialize settings store with dynamic import
 async function initializeStore() {
@@ -34,24 +35,35 @@ async function initializeLLM() {
 
         // Set up event forwarding to renderer
         llamaSystem.bridge.on('model-download-started', (data) => {
+            info('[Main] LlamaBridge emitted model-download-started, forwarding to renderer');
             if (mainWindow) {
                 mainWindow.webContents.send('llm-model-download-started', data);
+                info('[Main] Sent llm-model-download-started to renderer');
+            } else {
+                warn('[Main] Cannot forward event - mainWindow is null');
             }
         });
 
         llamaSystem.bridge.on('model-download-progress', (data) => {
+            info('[Main] LlamaBridge emitted model-download-progress', data.percent ? `${data.percent.toFixed(1)}%` : '');
             if (mainWindow) {
                 mainWindow.webContents.send('llm-model-download-progress', data);
             }
         });
 
         llamaSystem.bridge.on('model-download-complete', (data) => {
+            info('[Main] LlamaBridge emitted model-download-complete, forwarding to renderer');
+            info('[Main] Event data:', JSON.stringify(data));
             if (mainWindow) {
                 mainWindow.webContents.send('llm-model-download-complete', data);
+                info('[Main] Sent llm-model-download-complete to renderer');
+            } else {
+                warn('[Main] Cannot forward event - mainWindow is null');
             }
         });
 
         llamaSystem.bridge.on('model-download-error', (data) => {
+            error('[Main] LlamaBridge emitted model-download-error, forwarding to renderer');
             if (mainWindow) {
                 mainWindow.webContents.send('llm-model-download-error', data);
             }
@@ -75,57 +87,7 @@ async function initializeLLM() {
     }
 }
 
-// Check for model and download if needed
-async function checkAndDownloadModel() {
-    try {
-        const { existsSync } = await import('fs');
-        const { join } = await import('path');
-        const model = llmBridge.config.getTargetModel();
-        const modelPath = join(app.getPath('userData'), 'models', 'qwen2.5', 'main', model.filename);
 
-        if (!existsSync(modelPath)) {
-            info('[Main] Model not found, starting download');
-
-            // Notify renderer to show FTUE
-            if (mainWindow) {
-                mainWindow.webContents.send('model-download-starting', {
-                    name: model.name,
-                    sizeGB: model.sizeGB
-                });
-            }
-
-            try {
-                const downloadResult = await llmBridge.downloadModel('qwen:1.5b', (progress) => {
-                    if (mainWindow) {
-                        mainWindow.webContents.send('model-download-progress', progress);
-                    }
-                });
-
-                info('[Main] Model download result:', downloadResult);
-
-                if (downloadResult.success) {
-                    info('[Main] Model download completed successfully');
-
-                    // Download complete
-                    if (mainWindow) {
-                        mainWindow.webContents.send('model-download-complete');
-                    }
-                } else {
-                    throw new Error(downloadResult.error || 'Download failed with unknown error');
-                }
-            } catch (err) {
-                error('[Main] Model download failed:', err);
-                if (mainWindow) {
-                    mainWindow.webContents.send('model-download-error', { error: err.message });
-                }
-            }
-        } else {
-            info('[Main] Model already downloaded, skipping download');
-        }
-    } catch (err) {
-        error('[Main] Error checking for model:', err);
-    }
-}
 
 function createWindow() {
   // Parse --log-level argument
@@ -232,6 +194,145 @@ ipcMain.on('llm-generate-stream', async (event, { model, prompt, temperature, ma
     event.sender.send('llm-generate-stream-error', { error: err.message, errorType: 'STREAM_ERROR' });
   }
 });
+
+// Check model status helper function
+async function checkModelStatus() {
+    info('[Main] checkModelStatus called');
+    if (!llmInitialized || !llmBridge) {
+        info('[Main] LLM not initialized');
+        return { status: 'checking' };
+    }
+
+    try {
+        const { existsSync, statSync } = await import('fs');
+        const { join } = await import('path');
+        const model = llmBridge.config.getTargetModel();
+        const modelPath = join(app.getPath('userData'), 'models', 'qwen2.5', 'main', model.filename);
+
+        info('[Main] Checking model at:', modelPath);
+
+        if (existsSync(modelPath)) {
+            const stats = statSync(modelPath);
+            info('[Main] Model file exists, size:', stats.size, 'expected:', model.expectedSize);
+
+            // Check if it's a complete, valid download
+            if (stats.size === model.expectedSize) {
+                info('[Main] Model is complete and valid');
+                return {
+                    status: 'ready',
+                    model: model,
+                    modelPath: modelPath
+                };
+            }
+        }
+
+        // Check for partial download
+        const partialPath = modelPath + '.partial';
+        if (existsSync(partialPath)) {
+            const stats = statSync(partialPath);
+            info('[Main] Partial download found, size:', stats.size);
+
+            // Auto-resume download
+            info('[Main] Auto-resuming download');
+            startDownload();
+
+            return {
+                status: 'downloading',
+                model: model,
+                isResuming: true,
+                downloaded: stats.size,
+                total: model.expectedSize,
+                percent: (stats.size / model.expectedSize) * 100
+            };
+        } else {
+            info('[Main] No model or partial file found');
+            return { status: 'ready_to_download' };
+        }
+    } catch (err) {
+        error('[Main] Error checking model status:', err);
+        return { status: 'error', error: err.message };
+    }
+}
+
+// IPC handler for checking model status (both on and handle)
+ipcMain.on('check-model-status', async () => {
+    info('[Main] check-model-status (on) handler called');
+    const status = await checkModelStatus();
+    if (mainWindow) {
+        mainWindow.webContents.send('model-status', status);
+    }
+});
+
+ipcMain.handle('check-model-status', async () => {
+    info('[Main] check-model-status (handle) handler called');
+    return await checkModelStatus();
+});
+
+// IPC handler for retrying download
+ipcMain.on('retry-model-download', () => {
+    startDownload();
+});
+
+// IPC handler for opening model folder
+ipcMain.on('open-model-folder', async () => {
+    try {
+        const modelDir = path.join(app.getPath('userData'), 'models', 'qwen2.5', 'main');
+        await shell.openPath(modelDir);
+    } catch (err) {
+        error('[Main] Failed to open model folder:', err);
+    }
+});
+
+// IPC handler for getting model path
+ipcMain.handle('get-model-path', () => {
+    if (!llmInitialized || !llmBridge) {
+        return null;
+    }
+    return llmBridge.config.getModelDir();
+});
+
+// Start download process
+function startDownload() {
+    info('[Main] startDownload() called');
+    if (!llmInitialized || !llmBridge) {
+        error('[Main] Cannot start download - LLM not initialized');
+        return;
+    }
+
+    const model = llmBridge.config.getTargetModel();
+    info('[Main] Starting download of model:', model.id);
+
+    // Note: LlamaBridge emits its own events (model-download-started, model-download-progress, model-download-complete)
+    // which get forwarded to the renderer in the initializeLLM() function. We don't need to send duplicate events here.
+    llmBridge.downloadModel('qwen:1.5b', (progress) => {
+        // Progress is already being forwarded via LlamaBridge events
+        // This callback is just for logging if needed
+    }).then(result => {
+        info('[Main] Model download result:', result);
+
+        if (result.success) {
+            info('[Main] Model download completed successfully, path:', result.path);
+
+            // Re-check model status after a delay to ensure renderer has processed completion
+            // Also send the ready status directly with the model path to avoid race conditions
+            info('[Main] Re-checking model status after download (with delay)');
+            setTimeout(() => {
+                const model = llmBridge.config.getTargetModel();
+                const modelPath = require('path').join(app.getPath('userData'), 'models', 'qwen2.5', 'main', model.filename);
+                info('[Main] Sending ready status with modelPath:', modelPath);
+                if (mainWindow) {
+                    mainWindow.webContents.send('model-status', {
+                        status: 'ready',
+                        modelPath: modelPath,
+                        model: model
+                    });
+                }
+            }, 200);
+        }
+    }).catch(err => {
+        error('[Main] Model download failed:', err);
+    });
+}
 
 // Add IPC handlers for settings management
 ipcMain.handle('settings-get', (event, key) => {
@@ -432,11 +533,6 @@ app.whenReady().then(async () => {
     // Notify renderer about LLM initialization status
     if (mainWindow) {
       mainWindow.webContents.send('llm-initialized', llmResult);
-
-      // Check and download model if needed
-      if (llmResult.success) {
-        await checkAndDownloadModel();
-      }
     }
 
     // Minimal production menu: disable default DevTools shortcuts when packaged
