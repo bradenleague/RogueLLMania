@@ -5,6 +5,7 @@ const { ipcRenderer } = window.require('electron');
 const STATES = {
   START: 'START',
   CHECKING_MODEL: 'CHECKING_MODEL',
+  NEEDS_DOWNLOAD: 'NEEDS_DOWNLOAD',
   DOWNLOADING: 'DOWNLOADING',
   READY: 'READY',
   PLAYING: 'PLAYING'
@@ -70,16 +71,14 @@ function setupEventListeners() {
       isDownloading = true;
       appState.setState(STATES.DOWNLOADING, data);
     } else if (data.status === 'ready') {
-      // Use modelPath from event data
-      console.log('[StartScreen] Setting ready state with modelPath:', data.modelPath);
+      console.log('[StartScreen] Setting READY state with modelPath:', data.modelPath);
       isDownloading = false;
       appState.setState(STATES.READY, { modelPath: data.modelPath });
       console.log('[StartScreen] State after setting READY:', appState.getState());
     } else if (data.status === 'ready_to_download') {
-      // Show ready state with download needed message
-      console.log('[StartScreen] Setting ready_to_download state');
+      console.log('[StartScreen] Setting NEEDS_DOWNLOAD state');
       isDownloading = false;
-      appState.setState(STATES.READY, { needsDownload: true });
+      appState.setState(STATES.NEEDS_DOWNLOAD);
     }
   });
 
@@ -111,13 +110,11 @@ function setupEventListeners() {
     const currentState = appState.getState();
     console.log('[StartScreen] Current state during progress:', currentState);
 
-    // Update state data without triggering full re-render
+    // Direct DOM update instead of full re-render for performance
     if (currentState === STATES.DOWNLOADING) {
-      appState.data = { ...appState.data, ...data };
-      // Direct DOM update instead of re-render
       updateDownloadProgress(data);
-    } else if (currentState === STATES.READY) {
-      // If we're in READY state but get progress, transition to DOWNLOADING
+    } else if (currentState === STATES.READY || currentState === STATES.NEEDS_DOWNLOAD) {
+      // If we're in READY or NEEDS_DOWNLOAD state but get progress, transition to DOWNLOADING
       appState.setState(STATES.DOWNLOADING, data);
     }
   };
@@ -172,12 +169,7 @@ function setupEventListeners() {
     console.log('[StartScreen] Download error event received:', data);
     isDownloading = false;
     stopFakeProgress();
-    if (downloadPollInterval) {
-      clearInterval(downloadPollInterval);
-      downloadPollInterval = null;
-    }
-    appState.setData({ error: data.error });
-    render();
+    appState.setState(STATES.NEEDS_DOWNLOAD, { error: data.error });
   };
 
   ipcRenderer.on('llm-model-download-error', handleDownloadError);
@@ -209,9 +201,6 @@ function startGame() {
   });
 }
 
-let downloadPollInterval = null;
-let pollAttempts = 0;
-const MAX_POLL_ATTEMPTS = 300; // 5 minutes max
 let isDownloading = false;
 
 function retryDownload() {
@@ -236,42 +225,6 @@ function retryDownload() {
 
   ipcRenderer.send('retry-model-download');
   appState.setData({ error: null });
-
-  pollAttempts = 0;
-
-  // Poll for completion - check model status every 1 second
-  if (downloadPollInterval) {
-    clearInterval(downloadPollInterval);
-  }
-
-  downloadPollInterval = setInterval(async () => {
-    pollAttempts++;
-
-    // Safety: stop polling after max attempts
-    if (pollAttempts >= MAX_POLL_ATTEMPTS) {
-      console.error('[StartScreen] Max poll attempts reached, giving up');
-      clearInterval(downloadPollInterval);
-      downloadPollInterval = null;
-      isDownloading = false;
-      stopFakeProgress();
-      return;
-    }
-
-    try {
-      const status = await ipcRenderer.invoke('check-model-status');
-      console.log('[StartScreen] Polled model status:', status);
-      if (status && status.status === 'ready') {
-        console.log('[StartScreen] Model ready detected via polling');
-        clearInterval(downloadPollInterval);
-        downloadPollInterval = null;
-        isDownloading = false;
-        stopFakeProgress();
-        appState.setState(STATES.READY, { modelPath: status.modelPath });
-      }
-    } catch (err) {
-      console.error('[StartScreen] Error polling model status:', err);
-    }
-  }, 1000);
 }
 
 let fakeProgressInterval = null;
@@ -330,6 +283,9 @@ function render() {
       break;
     case STATES.CHECKING_MODEL:
       content = renderChecking();
+      break;
+    case STATES.NEEDS_DOWNLOAD:
+      content = renderNeedsDownload();
       break;
     case STATES.DOWNLOADING:
       content = renderDownloading(data);
@@ -435,46 +391,43 @@ function renderDownloading(data) {
   `;
 }
 
-function renderReady(data) {
-  console.log('[StartScreen] renderReady called with data:', data);
-  const modelPath = data.modelPath || 'Unknown location';
-  const needsDownload = data.needsDownload || false;
-  console.log('[StartScreen] needsDownload:', needsDownload, 'modelPath:', modelPath);
-
-  if (needsDownload) {
-    console.log('[StartScreen] Rendering download screen (needsDownload is true)');
-    return `
-      <div class="start-screen-content">
-        <h1 class="start-title">RogueLLMania</h1>
-        <p class="start-subtitle">An AI-Powered Roguelike Adventure</p>
-        
-        <div class="download-info">
-          <p>
-            To enable AI narration, we need to download a local model from Hugging Face.
-          </p>
-          <p class="download-details">
-            Model: Qwen2.5-1.5B-Instruct<br>
-            Download size: ~1.1 GB<br>
-            Storage: On your computer (one-time setup)
-          </p>
-          <p class="download-note">
-            <a href="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF" target="_blank" class="model-link">Learn more about this model on Hugging Face →</a>
-          </p>
-        </div>
-
-        <button id="retryDownloadBtn" class="btn btn-primary btn-large">Download Model</button>
-        
-        <p class="start-note">This may take a few minutes depending on your connection.</p>
-      </div>
-    `;
-  }
-
-  console.log('[StartScreen] Rendering ready-to-play screen');
+function renderNeedsDownload() {
   return `
     <div class="start-screen-content">
       <h1 class="start-title">RogueLLMania</h1>
       <p class="start-subtitle">An AI-Powered Roguelike Adventure</p>
-      
+
+      <div class="download-info">
+        <p>
+          To enable AI narration, we need to download a local model from Hugging Face.
+        </p>
+        <p class="download-details">
+          Model: Qwen2.5-1.5B-Instruct<br>
+          Download size: ~1.1 GB<br>
+          Storage: On your computer (one-time setup)
+        </p>
+        <p class="download-note">
+          <a href="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF" target="_blank" class="model-link">Learn more about this model on Hugging Face →</a>
+        </p>
+      </div>
+
+      <button id="retryDownloadBtn" class="btn btn-primary btn-large">Download Model</button>
+
+      <p class="start-note">This may take a few minutes depending on your connection.</p>
+    </div>
+  `;
+}
+
+function renderReady(data) {
+  console.log('[StartScreen] renderReady called with data:', data);
+  const modelPath = data.modelPath || 'Unknown location';
+  console.log('[StartScreen] Rendering ready-to-play screen with modelPath:', modelPath);
+
+  return `
+    <div class="start-screen-content">
+      <h1 class="start-title">RogueLLMania</h1>
+      <p class="start-subtitle">An AI-Powered Roguelike Adventure</p>
+
       <div class="ready-status">
         <div class="ready-indicator">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
