@@ -33,5 +33,6 @@ yarn.lock
 # Test coverage
 coverage/
 
-# Benchmark results (optional - commit to track history)
-# tests/benchmarks/benchmark-results.json
+# Test results
+tests/results/
+tests/benchmarks/benchmark-results.json

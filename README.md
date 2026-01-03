@@ -87,7 +87,7 @@ See [tests/README.md](tests/README.md) for detailed testing documentation and [d
    - `tiles/` — Tile definitions
    - `ui/` — HUD, overlays (inventory, settings, level intro)
    - `game.js` — Game bootstrap and orchestration
-    - `ollama.js` — Renderer wrapper for LLM integration (uses llama.cpp backend)
+    - `llm.js` — Renderer wrapper for LLM integration (uses llama.cpp backend)
 
 ## Platform Support
 

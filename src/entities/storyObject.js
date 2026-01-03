@@ -1,6 +1,6 @@
 import { Events } from '../systems/eventBus.js';
 import { findFreeTile, pickupEntityWithTileRestore } from './placement.js';
-import { generateDescription } from '../ollama.js';
+import { generateJson, JsonSchemas } from '../llm.js';
 import { isLLMEnabled } from '../systems/settings.js';
 import { incrementArtifactsFound, addToInventory, getGameState, updateInventoryItem } from '../systems/gameState.js';
 import { refreshInventoryDisplay } from '../ui/overlays/inventory.js';
@@ -16,44 +16,19 @@ import {
     ENVIRONMENTAL_INFLUENCES,
     EXAMPLE_ARTIFACTS,
     UI_MESSAGES,
-    DEBUG_ARTIFACT
+    DEBUG_ARTIFACT,
+    getAllWeirdnessModifiers
 } from '../content/artifacts.js';
 
 // LLM enable/disable is now controlled through settings
 
-// -------- Static prompt shared by all artifact generations --------
-const STATIC_PROMPT = `
-You are the Archivist—an AI scribe who crafts short, vivid blurbs for mysterious artifacts.
+// NOTE: Static prompt moved to ConfigManager.getSystemPrompts().artifact
+// This improves performance by using session-level systemPrompt instead of per-call embedding
+// Output format changed from XML to JSON schema for reliability
 
-Write with imagination while staying faithful to the provided XML facts.
-
-Creative guidelines
-1. Preserve <title> exactly.
-2. Paraphrase seed words (material, finish, form, position, proximity, environment, power_hint) rather than repeating them verbatim.
-3. Optionally add at most one inferred sensory detail (sound, texture, light, temperature, or motion) only if it plausibly follows from <themes>, <tile>, <environment>, or power_hint; if uncertain, omit it.
-4. Truth constraints: never contradict the tags; do not introduce new entities, counts, combat effects, proper names, measurements, or mechanics beyond subtle color around power_hint.
-5. Length: 35–70 words in 1–2 sentences, varied rhythm.
-
-Return only this structure (no extra text):
-
-<output_format>
-  <title>…</title>
-  <description>…</description>
-</output_format>
-
-Examples (tone only, do not mimic content):
-<example>
-  <title>Whispering Root</title>
-  <description>A length of petrified root, veined with brittle crystal, lies half‑claimed by the soil. Touch draws a hush from the ground—memory rising like cold breath from a cellar stair.</description>
-</example>
-<example>
-  <title>Echo Tablet</title>
-  <description>A flat slab rests squarely on time‑smoothed stone; its face refuses dust. The chamber holds its breath, and for a moment the floor seems to remember your footsteps before you make them.</description>
-</example>
-`;
-
-// Build the XML payload that will be appended to STATIC_PROMPT
-function buildArtifactXML(procSeed, position, proximity, environmentDetail, tileType, themes) {
+// Build the context payload for the artifact prompt
+// weirdnessHint is a seeded strange phenomenon to encourage variety
+function buildArtifactXML(procSeed, position, proximity, environmentDetail, tileType, themes, weirdnessHint) {
     return `
 <artifact>
   <seed>${procSeed.seedStr}</seed>
@@ -67,6 +42,7 @@ function buildArtifactXML(procSeed, position, proximity, environmentDetail, tile
   <environment>${environmentDetail}</environment>
   <power_hint>${procSeed.power}</power_hint>
   <themes>${themes || ''}</themes>
+  <weirdness_hint>${weirdnessHint || ''}</weirdness_hint>
 </artifact>`;
 }
 
@@ -230,6 +206,11 @@ function buildProcgenArtifact(x, y, MAP_WIDTH, MAP_HEIGHT, levelNumber, underTil
 
     const title = `${pick(rng, ARTIFACT_MATERIALS.titleParts.left)} ${pick(rng, ARTIFACT_MATERIALS.titleParts.right)}`;
 
+    // Pick a seeded weirdness modifier for variety injection
+    // This gives each artifact a unique strange quality based on its coordinates
+    const allWeirdness = getAllWeirdnessModifiers();
+    const weirdnessHint = pick(rng, allWeirdness);
+
     // Compose a deterministic two‑sentence blurb we can use as a fallback or seed for LLM polish
     const environmentNoun = tileType ? tileType : "ground";
     const finishPart = finishB ? `${finishA} and ${finishB}` : finishA;
@@ -250,6 +231,7 @@ function buildProcgenArtifact(x, y, MAP_WIDTH, MAP_HEIGHT, levelNumber, underTil
         adj,
         power,
         title,
+        weirdnessHint,
         fallbackText: `${sentence1} ${sentence2}`
     };
 }
@@ -324,8 +306,10 @@ function constructDynamicPrompt(x, y, MAP_WIDTH, MAP_HEIGHT, levelNumber, underT
 
     // Build XML payload + final prompt
     const themes = getArtifactThemesForTile(tileType);
-    const xmlPayload = buildArtifactXML(procSeed, position, proximity, environmentDetail, tileType, themes);
-    const dynamicPrompt = `${STATIC_PROMPT}\n${xmlPayload}`;
+    const weirdnessHint = procSeed?.weirdnessHint || '';
+    const xmlPayload = buildArtifactXML(procSeed, position, proximity, environmentDetail, tileType, themes, weirdnessHint);
+    // System prompt is now at session level via ConfigManager.getSystemPrompts()
+    const dynamicPrompt = xmlPayload;
 
     // Optional debug log
     logger.info(`Artifact prompt:\n${dynamicPrompt}`);
@@ -356,29 +340,16 @@ export async function generateStoryDetails(x, y, MAP_WIDTH, MAP_HEIGHT, levelNum
     let title = procSeed.title; // Default to proc‑gen title if parsing fails
 
     try {
-        const rawResponse = await generateDescription(dynamicPrompt);
+        // Generate JSON with schema enforcement and mode for system prompt
+        const result = await generateJson(dynamicPrompt, JsonSchemas.artifact, { mode: 'artifact' });
 
-        // Extract title from tags if present
-        const titleMatch = rawResponse.match(/<title>(.*?)<\/title>/);
-        if (titleMatch) {
-            title = titleMatch[1].trim();
-        }
-        
-        // Extract description from tags
-        const descriptionMatch = rawResponse.match(/<description>(.*?)<\/description>/s);
-        if (descriptionMatch) {
-            description = descriptionMatch[1].trim();
-        } else {
-            // Fallback: clean up the raw response by removing XML tags
-            description = rawResponse
-                .replace(/<[^>]*>/g, '') // Remove any remaining XML tags
-                .replace(/^\s*["']|["']\s*$/g, '') // Remove leading/trailing quotes
-                .trim();
-        }
-        
+        // Extract title and description from JSON result
+        title = result.title || procSeed.title;
+        description = result.description || procSeed.fallbackText;
+
         // Clean up any thinking tags that might be inside the description
         description = description.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-        
+
         logger.info(`Generated artifact: ${title}`);
     } catch (error) {
         logger.error(`Failed to generate artifact description: ${error.message}`, error);

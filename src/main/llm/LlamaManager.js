@@ -2,7 +2,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { getLlama, LlamaChatSession } from 'node-llama-cpp';
 import fs from 'fs/promises';
-import { error } from '../../systems/logger.js';
+import { error, debug } from '../../systems/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -13,8 +13,12 @@ export class LlamaManager {
     this.llama = null;
     this.model = null;
     this.context = null;
+    this.contextSequence = null; // Cached context sequence (reused across sessions)
     this.session = null;
     this.isInitialized = false;
+    this.grammarCache = new Map(); // Cache grammars by schema hash
+    this.currentMode = null; // Current system prompt mode: 'levelIntro' | 'artifact' | null
+    this.abortController = null; // For generation cancellation
   }
 
   async initialize() {
@@ -57,8 +61,11 @@ export class LlamaManager {
         batchSize: options.batchSize || 512,
       });
 
+      // Store context sequence for reuse across session recreations
+      this.contextSequence = this.context.getSequence();
+
       this.session = new LlamaChatSession({
-        contextSequence: this.context.getSequence()
+        contextSequence: this.contextSequence
       });
 
       return {
@@ -66,10 +73,61 @@ export class LlamaManager {
         contextSize,
         gpu: gpu
       };
-    } catch (error) {
-      error('Failed to load model:', error);
-      return { success: false, error: error.message };
+    } catch (err) {
+      error('Failed to load model:', err);
+      return { success: false, error: err.message };
     }
+  }
+
+  /**
+   * Set the generation mode, which determines the system prompt
+   * Recreates the session with the new system prompt if mode changes
+   * @param {string} mode - 'levelIntro' | 'artifact' | null
+   */
+  async setMode(mode) {
+    if (this.currentMode === mode) {
+      return; // No change needed
+    }
+
+    if (!this.contextSequence) {
+      throw new Error('Cannot set mode: no context sequence available');
+    }
+
+    const systemPrompts = this.config.getSystemPrompts();
+    const systemPrompt = mode ? systemPrompts[mode] : undefined;
+
+    if (mode && !systemPrompt) {
+      throw new Error(`Unknown mode: ${mode}`);
+    }
+
+    debug(`[LlamaManager] Switching mode from '${this.currentMode}' to '${mode}'`);
+
+    // Recreate session with new system prompt, reusing the same context sequence
+    this.session = new LlamaChatSession({
+      contextSequence: this.contextSequence,
+      systemPrompt
+    });
+
+    this.currentMode = mode;
+  }
+
+  /**
+   * Get or create a grammar from a JSON schema (cached)
+   */
+  async getGrammarForSchema(schema) {
+    if (!this.llama) {
+      throw new Error('Llama not initialized');
+    }
+
+    const schemaKey = JSON.stringify(schema);
+    if (this.grammarCache.has(schemaKey)) {
+      return this.grammarCache.get(schemaKey);
+    }
+
+    debug('[LlamaManager] Creating grammar for schema:', schema);
+    const grammar = await this.llama.createGrammarForJsonSchema(schema);
+    this.grammarCache.set(schemaKey, grammar);
+    return grammar;
   }
 
   async generate(prompt, options = {}) {
@@ -78,25 +136,46 @@ export class LlamaManager {
     }
 
     try {
-      const maxTokens = options.maxTokens || 500;
-      const temperature = options.temperature || 0.7;
-      const topP = options.topP || 0.95;
-      const topK = options.topK || 40;
+      // Switch mode if specified (changes system prompt)
+      if (options.mode !== undefined) {
+        await this.setMode(options.mode);
+      }
 
-      const generator = await this.session.prompt(prompt, {
+      const maxTokens = options.maxTokens ?? 500;
+      const temperature = options.temperature ?? this.config.get('llm.temperature', 0.8);
+      const topP = options.topP ?? 0.95;
+      const topK = options.topK ?? 40;
+
+      const promptOptions = {
         maxTokens,
         temperature,
         topP,
         topK,
-      });
-
-      return { 
-        success: true, 
-        text: generator 
+        seed: options.seed,
+        repeatPenalty: options.repeatPenalty ?? this.config.get('llm.repeatPenalty'),
       };
-    } catch (error) {
-      error('Generation failed:', error);
-      return { success: false, error: error.message };
+
+      // Add grammar if JSON schema provided
+      if (options.jsonSchema) {
+        promptOptions.grammar = await this.getGrammarForSchema(options.jsonSchema);
+      }
+
+      const response = await this.session.prompt(prompt, promptOptions);
+
+      // Parse JSON if schema was used
+      let result = { success: true, text: response };
+      if (options.jsonSchema && promptOptions.grammar) {
+        try {
+          result.parsed = promptOptions.grammar.parse(response);
+        } catch (parseErr) {
+          debug('[LlamaManager] JSON parse failed, returning raw:', parseErr.message);
+        }
+      }
+
+      return result;
+    } catch (err) {
+      error('Generation failed:', err);
+      return { success: false, error: err.message };
     }
   }
 
@@ -105,31 +184,64 @@ export class LlamaManager {
       throw new Error('No model loaded');
     }
 
-    const maxTokens = options.maxTokens || 500;
-    const temperature = options.temperature || 0.7;
-    const topP = options.topP || 0.95;
-    const topK = options.topK || 40;
+    // Switch mode if specified (changes system prompt)
+    if (options.mode !== undefined) {
+      await this.setMode(options.mode);
+    }
+
+    const maxTokens = options.maxTokens ?? 500;
+    const temperature = options.temperature ?? this.config.get('llm.temperature', 0.8);
+    const topP = options.topP ?? 0.95;
+    const topK = options.topK ?? 40;
 
     let fullText = '';
 
+    // Create abort controller for this generation
+    this.abortController = new AbortController();
+
     try {
-      const response = await this.session.prompt(prompt, {
+      const promptOptions = {
         maxTokens,
         temperature,
         topP,
         topK,
-        onResponseChunk: (chunk) => {
-          if (onToken && chunk.text) {
-            fullText += chunk.text;
-            onToken(chunk.text);
+        seed: options.seed,
+        repeatPenalty: options.repeatPenalty ?? this.config.get('llm.repeatPenalty'),
+        signal: this.abortController.signal,
+        stopOnAbortSignal: true, // Graceful stop, returns partial text
+        onTextChunk: (chunk) => {
+          if (onToken) {
+            fullText += chunk;
+            onToken(chunk);
           }
         }
-      });
+      };
 
-      return { success: true, text: fullText };
-    } catch (error) {
-      error('Streaming generation failed:', error);
-      throw error;
+      // Add grammar if JSON schema provided
+      let grammar = null;
+      if (options.jsonSchema) {
+        grammar = await this.getGrammarForSchema(options.jsonSchema);
+        promptOptions.grammar = grammar;
+      }
+
+      await this.session.prompt(prompt, promptOptions);
+
+      // Parse JSON if schema was used
+      let result = { success: true, text: fullText };
+      if (grammar) {
+        try {
+          result.parsed = grammar.parse(fullText);
+        } catch (parseErr) {
+          debug('[LlamaManager] JSON parse failed, returning raw:', parseErr.message);
+        }
+      }
+
+      return result;
+    } catch (err) {
+      error('Streaming generation failed:', err);
+      throw err;
+    } finally {
+      this.abortController = null;
     }
   }
 
@@ -179,10 +291,24 @@ export class LlamaManager {
     };
   }
 
+  /**
+   * Abort the current generation
+   * @returns {boolean} true if abort was requested, false if no generation in progress
+   */
+  abortGeneration() {
+    if (this.abortController) {
+      this.abortController.abort();
+      return true;
+    }
+    return false;
+  }
+
   async shutdown() {
     if (this.session) {
       this.session = null;
     }
+    this.contextSequence = null;
+    this.currentMode = null;
     if (this.context) {
       await this.context.dispose();
       this.context = null;

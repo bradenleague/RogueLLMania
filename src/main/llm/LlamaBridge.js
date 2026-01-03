@@ -90,7 +90,7 @@ export class LlamaBridge extends EventEmitter {
   }
 
   async chat(options) {
-    const { prompt, model, temperature = 0.7, maxTokens = 500, stream = false } = options;
+    const { prompt, model, temperature, maxTokens = 500, jsonSchema, mode, seed } = options;
 
     try {
       await this.ensureModel();
@@ -113,6 +113,9 @@ export class LlamaBridge extends EventEmitter {
       const result = await this.llamaManager.generate(prompt, {
         temperature,
         maxTokens,
+        jsonSchema,
+        mode,
+        seed,
       });
 
       return result;
@@ -123,7 +126,7 @@ export class LlamaBridge extends EventEmitter {
   }
 
   async chatStream(options, onChunk) {
-    const { prompt, model, temperature = 0.7, maxTokens = 500 } = options;
+    const { prompt, model, temperature, maxTokens = 500, jsonSchema, mode, seed } = options;
 
     try {
       await this.ensureModel();
@@ -146,6 +149,9 @@ export class LlamaBridge extends EventEmitter {
       const result = await this.llamaManager.generateStream(prompt, {
         temperature,
         maxTokens,
+        jsonSchema,
+        mode,
+        seed,
       }, onChunk);
 
       return result;
@@ -153,6 +159,13 @@ export class LlamaBridge extends EventEmitter {
       error('Chat stream failed:', err);
       throw err;
     }
+  }
+
+  /**
+   * Abort current generation
+   */
+  abortGeneration() {
+    return this.llamaManager.abortGeneration();
   }
 
   async testConnection(modelId) {

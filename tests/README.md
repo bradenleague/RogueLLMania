@@ -259,7 +259,7 @@ To integrate benchmarks with actual LLM inference:
 
 ```javascript
 // Replace MockLLMGenerator with real calls
-import { generateDescription } from '../src/ollama.js';
+import { generateDescription } from '../src/llm.js';
 
 const artifactSuite = createBenchmarkSuite('Real Artifacts', [
   {

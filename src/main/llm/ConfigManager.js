@@ -18,9 +18,16 @@ export class ConfigManager {
     this.set('llm.enabled', true);
     this.set('llm.gpu', true);
     this.set('llm.contextSize', 8192);
-    this.set('llm.temperature', 0.7);
+    this.set('llm.temperature', 0.8); // Increased from 0.7 for more variety
     this.set('llm.maxTokens', 500);
     this.set('llm.threads', 4);
+    this.set('llm.repeatPenalty', {
+      lastTokens: 32,
+      penalty: 1.1,
+      penalizeNewLine: true,
+      frequencyPenalty: 0.03,
+      presencePenalty: 0.03
+    });
   }
 
   getMemoryInfo() {
@@ -121,5 +128,43 @@ export class ConfigManager {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Get system prompts for different generation modes
+   * Using session-level systemPrompt reduces per-call token overhead by ~150 words
+   */
+  getSystemPrompts() {
+    return {
+      levelIntro: `You are the Chamber Herald—a narrator who writes punchy 1–2 sentence introductions when an adventurer enters a new chamber. Keep it under 50 words. Be vivid, be brief.
+
+TONE: Science-fantasy, alien and strange. Technology and biology blur. Things have agency: moss grows with intention, stone remembers. Threats feel predatory (hunger, not malice).
+
+AVOID: "ancient evil", "darkness lurks", "whispers of the past", "the air grows cold"
+PREFER: strange symbiosis, incomprehensible purpose, things that respond to presence
+
+RULES:
+- Write in second person ("You...")
+- 1-2 sentences, under 50 words
+- Paraphrase the context, don't repeat verbatim
+- Imply monster presence through atmosphere, not numbers
+- Vary sentence structures
+
+Respond with JSON: {"description": "your text here"}`,
+
+      artifact: `You are the Archivist—an AI scribe who crafts short, vivid blurbs for mysterious artifacts.
+
+TONE: Science-fantasy style where objects feel alive and strange. Artifacts have presence—they respond, remember, wait, or refuse. Technology and biology are indistinguishable.
+
+AVOID: "ancient power", "mystical energy", "dark secrets", "forgotten magic"
+PREFER: strange physics, alien logic, things that recognize you
+
+RULES:
+- Preserve title exactly as given
+- 20-40 words, punchy, one sentence is fine
+- Incorporate weirdness naturally
+
+Respond with JSON: {"title": "...", "description": "..."}`
+    };
   }
 }

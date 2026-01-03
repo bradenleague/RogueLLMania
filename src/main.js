@@ -138,61 +138,76 @@ function createWindow() {
 }
 
 // Add IPC handler for LLM generation
-ipcMain.handle('llm-generate', async (event, { model, prompt, stream, temperature, maxTokens }) => {
+ipcMain.handle('llm-generate', async (event, { model, prompt, temperature, maxTokens, jsonSchema, mode, seed }) => {
   try {
-    debug('[Main Process] LLM generation request:', { model, prompt: prompt.substring(0, 50) });
-    
+    debug('[Main Process] LLM generation request:', { model, prompt: prompt.substring(0, 50), hasSchema: !!jsonSchema, mode });
+
     if (!llmInitialized || !llmBridge) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: 'LLM not initialized',
         errorType: 'NOT_INITIALIZED'
       };
     }
-    
+
     const result = await llmBridge.chat({
       prompt,
       model,
       temperature,
       maxTokens,
-      stream: false
+      jsonSchema,
+      mode,
+      seed
     });
-    
+
     return result;
   } catch (err) {
     error('[Main Process] LLM generation error:', err);
-    return { 
-      success: false, 
-      error: error.message,
+    return {
+      success: false,
+      error: err.message,
       errorType: 'GENERATION_ERROR'
     };
   }
 });
 
 // Add IPC event for streaming LLM responses
-ipcMain.on('llm-generate-stream', async (event, { model, prompt, temperature, maxTokens }) => {
+ipcMain.on('llm-generate-stream', async (event, { model, prompt, temperature, maxTokens, jsonSchema, mode, seed }) => {
   try {
-    debug('[Main Process] LLM streaming request:', { model, prompt: prompt.substring(0, 50) });
-    
+    debug('[Main Process] LLM streaming request:', { model, prompt: prompt.substring(0, 50), hasSchema: !!jsonSchema, mode });
+
     if (!llmInitialized || !llmBridge) {
       event.sender.send('llm-generate-stream-error', { error: 'LLM not initialized', errorType: 'NOT_INITIALIZED' });
       return;
     }
-    
+
     await llmBridge.chatStream({
       prompt,
       model,
       temperature,
-      maxTokens
+      maxTokens,
+      jsonSchema,
+      mode,
+      seed
     }, (chunk) => {
       event.sender.send('llm-generate-stream-data', { content: chunk });
     });
-    
+
     event.sender.send('llm-generate-stream-end');
   } catch (err) {
     error('[Main Process] LLM streaming error:', err);
     event.sender.send('llm-generate-stream-error', { error: err.message, errorType: 'STREAM_ERROR' });
   }
+});
+
+// Add IPC handler for aborting LLM generation
+ipcMain.handle('llm-abort-generation', async () => {
+  if (!llmInitialized || !llmBridge) {
+    return { success: false, error: 'LLM not initialized' };
+  }
+
+  const aborted = llmBridge.abortGeneration();
+  return { success: true, aborted };
 });
 
 // Check model status helper function

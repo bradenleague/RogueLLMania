@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "benchmark": "node tests/llm/runBenchmark.js"
+    "benchmark": "node tests/llm/runBenchmark.js",
+    "benchmark:real": "node tests/llm/runRealBenchmark.js"
   },
   "keywords": [
     "roguelike",
