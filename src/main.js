@@ -318,7 +318,7 @@ function startDownload() {
             info('[Main] Re-checking model status after download (with delay)');
             setTimeout(() => {
                 const model = llmBridge.config.getTargetModel();
-                const modelPath = require('path').join(app.getPath('userData'), 'models', 'qwen2.5', 'main', model.filename);
+                const modelPath = path.join(app.getPath('userData'), 'models', 'qwen2.5', 'main', model.filename);
                 info('[Main] Sending ready status with modelPath:', modelPath);
                 if (mainWindow) {
                     mainWindow.webContents.send('model-status', {
