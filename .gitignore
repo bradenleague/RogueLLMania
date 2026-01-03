@@ -29,3 +29,9 @@ Thumbs.db
 # Package lock files (optional, if you don't want to commit them)
 # package-lock.json
 yarn.lock
+
+# Test coverage
+coverage/
+
+# Benchmark results (optional - commit to track history)
+# tests/benchmarks/benchmark-results.json
