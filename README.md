@@ -1,6 +1,6 @@
 # RogueLLMania
 
-RogueLLMania is a roguelike built with Electron and rot.js, featuring LLM-powered narration as its core experience. The game can be played without LLM enabled, but narration will use simpler, deterministic text.
+RogueLLMania is a roguelike built with Electron and rot.js, featuring LLM-powered narration as its core differentiator. The game uses a local AI model (Qwen3-1.7B) running via llama.cpp to generate atmospheric level introductions and artifact descriptions in real-time.
 
 <img width="990" height="760" alt="Screenshot 2025-08-16 at 2 25 47 PM" src="https://github.com/user-attachments/assets/f7e20f2b-78b2-4716-bc24-b812c7f33ca3" />
 
@@ -11,26 +11,26 @@ RogueLLMania is a roguelike built with Electron and rot.js, featuring LLM-powere
 2. Clone and install
    ```bash
    git clone <repository-url>
-   cd first-rogue-like
+   cd RogueLLMania
    npm install
-    ```
- 3. Run the game (development)
-    ```bash
-    npm run dev
-    ```
-    This runs with DevTools enabled.
+   ```
+3. Run the game (development)
+   ```bash
+   npm run dev
+   ```
+   This runs with DevTools enabled.
 
-    The first time you run the app, you'll be prompted to download the LLM model (Qwen3-1.7B, ~1.19GB). The download happens automatically with progress tracking.
+   **First run**: The app will automatically download the LLM model (Qwen3-1.7B, ~1.19GB) with progress tracking. This is a one-time setup.
 
-   Alternatively, start via Electron (no builder output):
-    ```bash
-    npm start
-    ```
- 4. Build the app
-    ```bash
-    npm run build
-    ```
-    Open the generated installer (e.g., `.dmg` on macOS, `.exe` on Windows, or the equivalent for your platform) under `dist/`.
+   Alternatively, start without DevTools:
+   ```bash
+   npm start
+   ```
+4. Build the app
+   ```bash
+   npm run build
+   ```
+   Open the generated installer (e.g., `.dmg` on macOS, `.exe` on Windows) from the `dist/` directory.
 
 
 ## Controls
@@ -53,54 +53,49 @@ RogueLLMania includes a comprehensive testing framework for validating and impro
 # Run all tests
 npm test
 
-# Run tests in watch mode
-npm test:watch
-
-# Run with coverage
-npm test:coverage
-
 # Run benchmarks to track quality over time
 npm run benchmark
 ```
-
-See [tests/README.md](tests/README.md) for detailed testing documentation and [docs/PROMPT_IMPROVEMENT_GUIDE.md](docs/PROMPT_IMPROVEMENT_GUIDE.md) for tips on improving narration quality.
-
-## LLM Settings
-
-- Open the settings overlay (gear icon in the top-right).
-- Model: Qwen3-1.7B-Instruct is the default model, downloaded and managed automatically.
-- Enable/disable LLM generation: toggle "Enable LLM Generation". When disabled, game uses deterministic fallback text.
-- You can test model loading and generation from Settings → "TEST CONNECTION".
-- Model downloads automatically on first run. You can re-download or delete the model from Settings.
 
 ## Project Structure
 
 - `public/` — HTML, CSS shell for the renderer
 - `src/` — Main source code
-   - `ai/` — Monster AI "brains"
-   - `combat/` — Combat, stats, factions
-   - `content/` — Static content (artifacts, monsters, system messages)
-   - `entities/` — Game entities (player, monsters, objects)
-   - `levels/` — Level generation, pathfinding, tiles
-   - `main/llm/` — LLM integration with llama.cpp
-   - `systems/` — Core systems (renderer, input, world, FOV, settings, etc.)
-   - `tiles/` — Tile definitions
-   - `ui/` — HUD, overlays (inventory, settings, level intro)
-   - `game.js` — Game bootstrap and orchestration
-    - `llm.js` — Renderer wrapper for LLM integration (uses llama.cpp backend)
+  - `ai/brains/` — Monster AI behavior (zombie, chaser)
+  - `combat/` — Combat mechanics, stats, factions
+  - `content/` — Static content (artifacts, monsters, system messages)
+  - `entities/` — Game entities (player, monsters, items, story objects)
+  - `levels/` — Level generation (basic, cave, pillared hall), pathfinding
+  - `main/llm/` — LLM backend (llama.cpp integration)
+    - `ConfigManager.js` — Model config and system prompts
+    - `LlamaBridge.js` — High-level LLM API
+    - `LlamaManager.js` — Low-level llama.cpp wrapper
+    - `ModelDownloader.js` — Model download with resume support
+    - `schemas.js` — JSON schemas for structured output
+  - `systems/` — Core game systems (renderer, input, FOV, turn engine, world, etc.)
+  - `tiles/` — Tile types and definitions
+  - `ui/` — UI layer and overlays
+    - `overlays/` — Inventory, settings, FTUE, level intro
+    - `startScreen.js` — Start screen with model download UI
+    - `modelDownloadController.js` — Download state management
+    - `overlayManager.js` — Overlay system
+  - `game.js` — Game bootstrap and orchestration
+  - `llm.js` — Renderer-side LLM client (IPC wrapper)
+  - `main.js` — Electron main process
 
 ## Platform Support
 
-- macOS: packaged build (.dmg) validated for 0.1.0.
-- Windows: packaged build (.exe) validated for 0.1.0.
-- Linux: runs via `npm start`/Electron; packaged build not yet tested.
+- **macOS**: Packaged build (.dmg) with code signing. Validated for v0.1.1.
+- **Windows**: Packaged build (.exe). Validated for v0.1.0 (v0.1.1 pending).
+- **Linux**: Runs via `npm start`/Electron; packaged build (.AppImage) not yet tested.
 
 ## Model Information
 
-- Default model: Qwen3-1.7B-Instruct @ Q4_K_M (chosen for small size and fast local performance).
-- Model is managed automatically by the app. Downloads happen in-app with progress tracking.
-- Runs locally via llama.cpp native bindings (no external HTTP API required).
-- Chain-of-thought (CoT) is not required. If a model emits CoT or auxiliary tags, the game ignores them and extracts the final description.
+- **Model**: Qwen3-1.7B-Instruct @ Q4_K_M (~1.19GB download)
+- **Why this model?** Small size, fast inference on consumer hardware, good quality for narrative generation
+- **Automatic management**: Model downloads on first run with progress tracking and resume support
+- **Fully local**: Runs via llama.cpp native bindings (no internet required after download, no external APIs)
+- **Storage**: Model stored in user data directory, validated with SHA256 checksums
 
 ## Known Issues
 
