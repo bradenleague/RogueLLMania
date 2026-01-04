@@ -1,6 +1,6 @@
 {
   "name": "roguellmania",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "RogueLLMania – a minimal roguelike built with Electron and rot.js",
   "main": "src/main.js",
   "type": "module",

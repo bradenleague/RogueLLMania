@@ -7,14 +7,13 @@ let mainWindow;
 let store; // Will be initialized with dynamic import
 let llmBridge; // New LLM bridge instance
 let llmInitialized = false;
-let downloadJustCompleted = false;
 
 // Initialize settings store with dynamic import
 async function initializeStore() {
     const { default: Store } = await import('electron-store');
     store = new Store({
         defaults: {
-            llmModel: 'phi3:mini',
+            llmModel: 'qwen3:1.7b',
             enableLLM: true,
             fullscreen: false,
             windowWidth: 1200,

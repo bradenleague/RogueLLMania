@@ -476,17 +476,7 @@ export async function createStoryObject(map, MAP_WIDTH, MAP_HEIGHT, player, leve
             })
             .catch(error => {
                 logger.error(`Failed to generate story object details: ${error.message}`, error);
-                const code = error && (error.code || error.errorType);
-                if (!window.__OLLAMA_NUDGE_SHOWN && (code === 'CONNECTION_ERROR' || code === 'MODEL_NOT_FOUND' || code === 'SERVICE_ERROR')) {
-                    try {
-                        world.messageBus.emit(Events.MESSAGE_TYPED, { 
-                            text: "Your Archivist coughs politely: I can riff on vibes, but Ollama isn’t connected. Flip the ⚙️ Settings, pick a model, and I’ll spin something legendary.", 
-                            type: 'warn' 
-                        });
-                        window.__OLLAMA_NUDGE_SHOWN = true;
-                    } catch {}
-                }
-                // Keep placeholder values but mark as not loading
+                // Keep placeholder values but mark as not loading (fallback text is used)
                 storyObject.loading = false;
                 
                 if (world && world.messageBus) {

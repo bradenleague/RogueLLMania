@@ -90,10 +90,8 @@ function setupEventListeners() {
     }
     lastProgressUpdate = now;
 
-    console.log('[StartScreen] Download progress event received:', data);
     stopFakeProgress();
     const currentState = appState.getState();
-    console.log('[StartScreen] Current state during progress:', currentState);
 
     // Direct DOM update instead of full re-render for performance
     if (currentState === STATES.DOWNLOADING) {
@@ -105,33 +103,23 @@ function setupEventListeners() {
   };
 
   ipcRenderer.on('llm-model-download-progress', handleDownloadProgress);
-  console.log('[StartScreen] Registered listener for llm-model-download-progress');
   ipcRenderer.on('model-download-progress', handleDownloadProgress);
-  console.log('[StartScreen] Registered listener for model-download-progress');
 
   // Handle download complete - both event naming conventions
   const handleDownloadComplete = (event, data) => {
-    console.log('[StartScreen] Download complete event received:', data);
-    console.log('[StartScreen] Data properties:', Object.keys(data));
     stopFakeProgress();
     isDownloading = false;
 
     // Use model path from event data
     const modelPath = data.path || data.modelPath;
-    console.log('[StartScreen] Model path from event:', modelPath);
 
     if (modelPath) {
-      console.log('[StartScreen] Setting READY state with modelPath:', modelPath);
       appState.setState(STATES.READY, { modelPath });
-      console.log('[StartScreen] State after setting READY:', appState.getState());
-      console.log('[StartScreen] Data after setting READY:', appState.getData());
     } else {
-      console.log('[StartScreen] No model path in event, fetching via IPC');
       // Fallback: fetch model path via IPC
       ipcRenderer.invoke('get-model-path').then(modelDir => {
         if (modelDir) {
           const fullPath = modelDir + '/Qwen3-1.7B-Q4_K_M.gguf';
-          console.log('[StartScreen] Fetched model path:', fullPath);
           appState.setState(STATES.READY, { modelPath: fullPath });
         } else {
           console.error('[StartScreen] Failed to get model directory');
@@ -145,13 +133,10 @@ function setupEventListeners() {
   };
 
   ipcRenderer.on('llm-model-download-complete', handleDownloadComplete);
-  console.log('[StartScreen] Registered listener for llm-model-download-complete');
   ipcRenderer.on('model-download-complete', handleDownloadComplete);
-  console.log('[StartScreen] Registered listener for model-download-complete');
 
   // Handle download error - both event naming conventions
   const handleDownloadError = (event, data) => {
-    console.log('[StartScreen] Download error event received:', data);
     isDownloading = false;
     stopFakeProgress();
     appState.setState(STATES.NEEDS_DOWNLOAD, { error: data.error });
@@ -160,7 +145,6 @@ function setupEventListeners() {
   ipcRenderer.on('llm-model-download-error', handleDownloadError);
   ipcRenderer.on('model-download-error', handleDownloadError);
 
-  console.log('[StartScreen] Setting up click listeners');
   startScreenEl.addEventListener('click', (e) => {
     if (e.target.id === 'startGameBtn') {
       startGame();
@@ -170,7 +154,6 @@ function setupEventListeners() {
       openModelFolder();
     }
   });
-  console.log('[StartScreen] Event listeners setup complete');
 }
 
 function startGame() {
@@ -189,7 +172,6 @@ function startGame() {
 let isDownloading = false;
 
 function retryDownload() {
-  console.log('[StartScreen] Retry download button clicked');
   isDownloading = true;
 
   // Start fake progress for immediate visual feedback
@@ -258,8 +240,6 @@ function render() {
   const state = appState.getState();
   const data = appState.getData();
 
-  console.log('[StartScreen] Rendering - State:', state, 'Data:', data);
-
   let content = '';
 
   switch (state) {
@@ -282,7 +262,6 @@ function render() {
       content = renderPlaying();
       break;
     default:
-      console.log('[StartScreen] Unknown state, defaulting to START');
       content = renderStart();
   }
 
@@ -404,9 +383,7 @@ function renderNeedsDownload() {
 }
 
 function renderReady(data) {
-  console.log('[StartScreen] renderReady called with data:', data);
   const modelPath = data.modelPath || 'Unknown location';
-  console.log('[StartScreen] Rendering ready-to-play screen with modelPath:', modelPath);
 
   return `
     <div class="start-screen-content">
@@ -441,8 +418,6 @@ function renderPlaying() {
 }
 
 function updateDownloadProgress(data) {
-  console.log('[StartScreen] updateDownloadProgress called with:', data);
-  
   if (!startScreenEl) return;
   
   const amountEl = startScreenEl.querySelector('.download-amount');
