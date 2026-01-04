@@ -1,11 +1,14 @@
 import { register, open as openOverlay, close as closeOverlay, isOpen as isOverlayOpen } from '../overlayManager.js';
+import { subscribe as subscribeToModelDownload, getState as getModelDownloadState } from '../modelDownloadController.js';
 
 let overlayRootEl = null;
+let unsubscribeDownload = null;
 
 export function initializeFTUE() {
   register('ftue', (root) => {
     overlayRootEl = root;
     updateFTUEDisplay(root);
+    setupDownloadListeners();
   }, { title: 'Welcome to RogueLLMania', closeOnEsc: false, closeOnScrim: false, className: 'ftue-overlay' });
 
   // Listen for events from main process
@@ -14,8 +17,9 @@ export function initializeFTUE() {
     openFTUE();
   });
 
-  ipcRenderer.on('model-download-starting', () => {
-    if (!isOverlayOpen('ftue')) {
+  // Ensure FTUE opens automatically when a download starts
+  subscribeToModelDownload(({ status }) => {
+    if (status !== 'idle' && !isOverlayOpen('ftue')) {
       openFTUE();
     }
   });
@@ -73,88 +77,120 @@ function updateFTUEDisplay(root) {
     </div>
   `;
 
-  setupDownloadListeners();
+  // Initialize UI with current download state
+  syncWithControllerState(getModelDownloadState());
 }
 
 function setupDownloadListeners() {
-  const { ipcRenderer } = window.require('electron');
+  if (unsubscribeDownload) return;
 
-  ipcRenderer.on('model-download-starting', (event, { name, sizeGB }) => {
-    const downloadStatus = document.getElementById('downloadStatus');
-    if (downloadStatus) {
-      downloadStatus.innerHTML = `<div class="download-info">Downloading ${name} (${sizeGB}GB)...</div>`;
-    }
+  unsubscribeDownload = subscribeToModelDownload((state) => {
+    syncWithControllerState(state);
   });
+}
 
-  ipcRenderer.on('model-download-progress', (event, progress) => {
-    const progressBar = document.getElementById('progressBar');
-    const progressPercent = document.getElementById('progressPercent');
-    const progressSize = document.getElementById('progressSize');
-    const progressSection = document.getElementById('downloadProgress');
-    const downloadStatus = document.getElementById('downloadStatus');
+function syncWithControllerState({ status, data }) {
+  switch (status) {
+    case 'starting':
+      handleDownloadStarting(data);
+      break;
+    case 'progress':
+      handleDownloadProgress(data);
+      break;
+    case 'complete':
+      handleDownloadComplete();
+      break;
+    case 'error':
+      handleDownloadError(data);
+      break;
+    default:
+      break;
+  }
+}
 
-    if (progressStatus) {
-      progressStatus.style.display = 'none';
-    }
+function handleDownloadStarting({ name, sizeGB } = {}) {
+  const downloadStatus = document.getElementById('downloadStatus');
+  const progressSection = document.getElementById('downloadProgress');
 
-    if (progressSection) {
-      progressSection.style.display = 'block';
-    }
+  if (downloadStatus) {
+    const label = name && sizeGB ? `Downloading ${name} (${sizeGB}GB)...` : 'Preparing download...';
+    downloadStatus.innerHTML = `<div class="download-info">${label}</div>`;
+    downloadStatus.style.display = 'block';
+  }
 
-    if (progressBar) {
-      progressBar.style.width = `${progress.percent}%`;
-    }
+  if (progressSection) {
+    progressSection.style.display = 'none';
+  }
+}
 
-    if (progressPercent) {
-      progressPercent.textContent = `${Math.round(progress.percent)}%`;
-    }
+function handleDownloadProgress(progress = {}) {
+  const progressBar = document.getElementById('progressBar');
+  const progressPercent = document.getElementById('progressPercent');
+  const progressSize = document.getElementById('progressSize');
+  const progressSection = document.getElementById('downloadProgress');
+  const downloadStatus = document.getElementById('downloadStatus');
 
-    if (progressSize) {
-      const downloadedMB = (progress.downloaded / (1024 * 1024)).toFixed(1);
-      const totalMB = (progress.total / (1024 * 1024)).toFixed(0);
-      const speedText = progress.speed > 0 ? ` @ ${progress.speed.toFixed(1)} MB/s` : '';
-      progressSize.textContent = `${downloadedMB}MB / ${totalMB}MB${speedText}`;
-    }
-  });
+  if (downloadStatus) {
+    downloadStatus.style.display = 'none';
+  }
 
-  ipcRenderer.on('model-download-complete', () => {
-    const downloadSection = document.getElementById('downloadSection');
-    if (downloadSection) {
-      downloadSection.innerHTML = `
-        <div class="ftue-success">
-          <h3>✓ Download Complete!</h3>
-          <p>Model installed successfully. Launching game...</p>
-        </div>
-      `;
-      setTimeout(() => closeFTUE(), 2000);
-    }
-  });
+  if (progressSection) {
+    progressSection.style.display = 'block';
+  }
 
-  ipcRenderer.on('model-download-error', (event, { error }) => {
-    const downloadSection = document.getElementById('downloadSection');
-    if (downloadSection) {
-      downloadSection.innerHTML = `
-        <div class="ftue-error">
-          <h3>✗ Download Failed</h3>
-          <p>${error}</p>
-          <button class="btn btn-primary" onclick="location.reload()">Try Again</button>
-        </div>
-      `;
-    }
-  });
+  if (progressBar) {
+    progressBar.style.width = `${progress.percent || 0}%`;
+  }
+
+  if (progressPercent) {
+    progressPercent.textContent = `${Math.round(progress.percent || 0)}%`;
+  }
+
+  if (progressSize) {
+    const downloadedMB = progress.downloaded ? (progress.downloaded / (1024 * 1024)).toFixed(1) : '0.0';
+    const totalMB = progress.total ? (progress.total / (1024 * 1024)).toFixed(0) : '0';
+    const speedText = progress.speed > 0 ? ` @ ${progress.speed.toFixed(1)} MB/s` : '';
+    progressSize.textContent = `${downloadedMB}MB / ${totalMB}MB${speedText}`;
+  }
+}
+
+function handleDownloadComplete() {
+  const downloadSection = document.getElementById('downloadSection');
+  if (downloadSection) {
+    downloadSection.innerHTML = `
+      <div class="ftue-success">
+        <h3>✓ Download Complete!</h3>
+        <p>Model installed successfully. Launching game...</p>
+      </div>
+    `;
+    setTimeout(() => closeFTUE(), 2000);
+  }
+}
+
+function handleDownloadError({ error } = {}) {
+  const downloadSection = document.getElementById('downloadSection');
+  if (downloadSection) {
+    downloadSection.innerHTML = `
+      <div class="ftue-error">
+        <h3>✗ Download Failed</h3>
+        <p>${error || 'Something went wrong while downloading the model.'}</p>
+        <button class="btn btn-primary" onclick="location.reload()">Try Again</button>
+      </div>
+    `;
+  }
 }
 
 async function openSettingsAndDownload(modelId) {
   const { openSettings } = await import('./settings.js');
   await openSettings();
-  
+
   setTimeout(() => {
     const modelSelect = document.querySelector('#modelSelect');
     if (modelSelect) {
       modelSelect.value = modelId;
       modelSelect.dispatchEvent(new Event('change'));
     }
-    
+
     const downloadButton = document.querySelector('#downloadModelButton');
     if (downloadButton) {
       downloadButton.click();
