@@ -20,7 +20,7 @@ RogueLLMania is a roguelike built with Electron and rot.js, featuring LLM-powere
     ```
     This runs with DevTools enabled.
 
-    The first time you run the app, you'll be prompted to download the LLM model (Qwen2.5-1.5B, ~1.07GB). The download happens automatically with progress tracking.
+    The first time you run the app, you'll be prompted to download the LLM model (Qwen3-1.7B, ~1.19GB). The download happens automatically with progress tracking.
 
    Alternatively, start via Electron (no builder output):
     ```bash
@@ -68,7 +68,7 @@ See [tests/README.md](tests/README.md) for detailed testing documentation and [d
 ## LLM Settings
 
 - Open the settings overlay (gear icon in the top-right).
-- Model: Qwen2.5-1.5B-Instruct is the default model, downloaded and managed automatically.
+- Model: Qwen3-1.7B-Instruct is the default model, downloaded and managed automatically.
 - Enable/disable LLM generation: toggle "Enable LLM Generation". When disabled, game uses deterministic fallback text.
 - You can test model loading and generation from Settings → "TEST CONNECTION".
 - Model downloads automatically on first run. You can re-download or delete the model from Settings.
@@ -97,7 +97,7 @@ See [tests/README.md](tests/README.md) for detailed testing documentation and [d
 
 ## Model Information
 
-- Default model: Qwen2.5-1.5B-Instruct @ Q4_K_M (chosen for small size and fast local performance).
+- Default model: Qwen3-1.7B-Instruct @ Q4_K_M (chosen for small size and fast local performance).
 - Model is managed automatically by the app. Downloads happen in-app with progress tracking.
 - Runs locally via llama.cpp native bindings (no external HTTP API required).
 - Chain-of-thought (CoT) is not required. If a model emits CoT or auxiliary tags, the game ignores them and extracts the final description.

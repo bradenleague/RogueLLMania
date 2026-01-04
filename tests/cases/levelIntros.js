@@ -1,6 +1,11 @@
 /**
  * Test cases for level introduction generation
  * Each case provides structured XML input and expected quality criteria
+ *
+ * SLOT-BASED GENERATION:
+ * - Level intros now use 3 slots: room (8-14 words), threat (6-12 words), oddity (8-14 words)
+ * - Slots are assembled with periods: `${room}. ${threat}. ${oddity}.`
+ * - Target total: ~30-40 words (assembled)
  */
 
 export const LEVEL_INTRO_TEST_CASES = [

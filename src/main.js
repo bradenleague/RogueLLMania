@@ -222,7 +222,7 @@ async function checkModelStatus() {
         const { existsSync, statSync } = await import('fs');
         const { join } = await import('path');
         const model = llmBridge.config.getTargetModel();
-        const modelPath = join(app.getPath('userData'), 'models', 'qwen2.5', 'main', model.filename);
+        const modelPath = join(app.getPath('userData'), 'models', 'qwen3', 'main', model.filename);
 
         info('[Main] Checking model at:', modelPath);
 
@@ -291,7 +291,7 @@ ipcMain.on('retry-model-download', () => {
 // IPC handler for opening model folder
 ipcMain.on('open-model-folder', async () => {
     try {
-        const modelDir = path.join(app.getPath('userData'), 'models', 'qwen2.5', 'main');
+        const modelDir = path.join(app.getPath('userData'), 'models', 'qwen3', 'main');
         await shell.openPath(modelDir);
     } catch (err) {
         error('[Main] Failed to open model folder:', err);
@@ -319,7 +319,7 @@ function startDownload() {
 
     // Note: LlamaBridge emits its own events (model-download-started, model-download-progress, model-download-complete)
     // which get forwarded to the renderer in the initializeLLM() function. We don't need to send duplicate events here.
-    llmBridge.downloadModel('qwen:1.5b', (progress) => {
+    llmBridge.downloadModel('qwen3:1.7b', (progress) => {
         // Progress is already being forwarded via LlamaBridge events
         // This callback is just for logging if needed
     }).then(result => {
@@ -333,7 +333,7 @@ function startDownload() {
             info('[Main] Re-checking model status after download (with delay)');
             setTimeout(() => {
                 const model = llmBridge.config.getTargetModel();
-                const modelPath = path.join(app.getPath('userData'), 'models', 'qwen2.5', 'main', model.filename);
+                const modelPath = path.join(app.getPath('userData'), 'models', 'qwen3', 'main', model.filename);
                 info('[Main] Sending ready status with modelPath:', modelPath);
                 if (mainWindow) {
                     mainWindow.webContents.send('model-status', {

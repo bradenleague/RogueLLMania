@@ -9,29 +9,8 @@ import { appendLevelIntroductionText } from './ui/overlays/levelIntro.js';
 
 const { ipcRenderer } = window.require('electron');
 
-/**
- * Common JSON schemas for game content
- */
-export const JsonSchemas = {
-    // Level introduction: { description: "..." }
-    levelIntro: {
-        type: 'object',
-        properties: {
-            description: { type: 'string' }
-        },
-        required: ['description']
-    },
-
-    // Artifact: { title: "...", description: "..." }
-    artifact: {
-        type: 'object',
-        properties: {
-            title: { type: 'string' },
-            description: { type: 'string' }
-        },
-        required: ['title', 'description']
-    }
-};
+// Re-export schemas from shared location (used by both game and benchmarks)
+export { JsonSchemas, assembleLevelIntro, assembleArtifact } from './main/llm/schemas.js';
 
 /**
  * Generate structured JSON using the LLM with schema enforcement

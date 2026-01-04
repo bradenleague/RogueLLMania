@@ -14,11 +14,17 @@ export class ConfigManager {
   }
 
   initializeDefaults() {
-    this.set('llm.model', 'qwen:1.5b');
+    // Model swap: update llm.model + getTargetModel() when changing the bundled LLM.
+    this.set('llm.model', 'qwen3:1.7b');
     this.set('llm.enabled', true);
     this.set('llm.gpu', true);
-    this.set('llm.contextSize', 8192);
-    this.set('llm.temperature', 0.8); // Increased from 0.7 for more variety
+    this.set('llm.contextSize', 32768);
+    // Per-mode temperature: artifacts need precision, level intros can be more creative
+    this.set('llm.temperature', {
+      levelIntro: 0.75,  // Balance variety + control
+      artifact: 0.65,    // Precision + brevity
+      default: 0.7       // Fallback for other modes
+    });
     this.set('llm.maxTokens', 500);
     this.set('llm.threads', 4);
     this.set('llm.repeatPenalty', {
@@ -57,25 +63,25 @@ export class ConfigManager {
   }
 
   getModelDir() {
-    return join(this.appDataPath, 'models', 'qwen2.5', 'main');
+    return join(this.appDataPath, 'models', 'qwen3', 'main');
   }
 
   getTargetModel() {
     return {
-      id: 'qwen:1.5b',
-      name: 'Qwen2.5-1.5B-Instruct',
-      revision: '91cad51170dc346986eccefdc2dd33a9da36ead9',
-      filename: 'qwen2.5-1.5b-instruct-q4_k_m.gguf',
-      url: 'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf?download=true',
-      expectedSize: 1117320736,
-      sha256: '6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e',
-      etag: '6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e',
-      sizeGB: 1.04,
-      size: '1.04GB',
+      id: 'qwen3:1.7b',
+      name: 'Qwen3-1.7B-Instruct',
+      revision: '9133944160303d79aad5acc1d86feaecbb47978f',
+      filename: 'Qwen3-1.7B-Q4_K_M.gguf',
+      url: 'https://huggingface.co/lm-kit/qwen-3-1.7b-instruct-gguf/resolve/9133944160303d79aad5acc1d86feaecbb47978f/Qwen3-1.7B-Q4_K_M.gguf?download=true',
+      expectedSize: 1282439360,
+      sha256: 'b047d6617eba56dcfa3357566b06807f54b15816faf6182aabd12d7e2378e537',
+      etag: 'b047d6617eba56dcfa3357566b06807f54b15816faf6182aabd12d7e2378e537',
+      sizeGB: 1.19,
+      size: '1.19GB',
       ramRequired: 3,
-      contextSize: 8192,
+      contextSize: 32768,
       format: 'GGUF',
-      description: 'Optimized 1.5B model with excellent performance/size ratio'
+      description: 'Quantized Qwen3-1.7B instruct model (Q4_K_M) with enhanced reasoning and narrative quality'
     };
   }
 
@@ -133,38 +139,61 @@ export class ConfigManager {
   /**
    * Get system prompts for different generation modes
    * Using session-level systemPrompt reduces per-call token overhead by ~150 words
+   *
+   * SLOT-BASED GENERATION: We request typed slots with strict constraints,
+   * then assemble them deterministically to ensure length control and variety.
+   *
+   * TODO: Ban List System (see plan Part 6)
+   * After gathering more benchmark data, implement banned phrase filtering:
+   * - Add bannedPhrases config with mode-specific lists
+   * - Option 1: Add to prompts as explicit constraints
+   * - Option 2: Post-generation validation and retry
+   * - Option 3: Grammar-based token sequence blocking
    */
   getSystemPrompts() {
     return {
-      levelIntro: `You are the Chamber Herald—a narrator who writes punchy 1–2 sentence introductions when an adventurer enters a new chamber. Keep it under 50 words. Be vivid, be brief.
+      // Level intros use 3 slots: room (environment), threat (enemies), oddity (weirdness)
+      levelIntro: `You write 3-part chamber introductions. Each part has a specific job.
 
-TONE: Science-fantasy, alien and strange. Technology and biology blur. Things have agency: moss grows with intention, stone remembers. Threats feel predatory (hunger, not malice).
+TONE: Science-fantasy. Technology/biology blur. Things have agency.
+AVOID: "ancient evil", "darkness lurks", "the air grows cold"
+PREFER: strange symbiosis, incomprehensible purpose, responsive environments
 
-AVOID: "ancient evil", "darkness lurks", "whispers of the past", "the air grows cold"
-PREFER: strange symbiosis, incomprehensible purpose, things that respond to presence
+SLOT 1 - ROOM (8-14 words):
+- Describe the floor/environment with 1 concrete sensory detail (sound/smell/temperature)
+- Second person, present tense
+- Example: "Grass thrives under stone, cold and wet against your boots."
 
-RULES:
-- Write in second person ("You...")
-- 1-2 sentences, under 50 words
-- Paraphrase the context, don't repeat verbatim
-- Imply monster presence through atmosphere, not numbers
-- Vary sentence structures
+SLOT 2 - THREAT (6-12 words):
+- Imply monster presence through behavior, not numbers
+- Use vivid verbs (loiter, pace, coil, twitch)
+- Example: "Three zombies loiter between mossy pillars, heads twitching."
 
-Respond with JSON: {"description": "your text here"}`,
+SLOT 3 - ODDITY (8-14 words):
+- ONE uncanny detail that feels wrong or alien
+- Make environment responsive/alive
+- Example: "The blades lean the wrong way, as if listening to something below you."
 
-      artifact: `You are the Archivist—an AI scribe who crafts short, vivid blurbs for mysterious artifacts.
+Respond with JSON: {"room": "...", "threat": "...", "oddity": "..."}`,
 
-TONE: Science-fantasy style where objects feel alive and strange. Artifacts have presence—they respond, remember, wait, or refuse. Technology and biology are indistinguishable.
+      // Artifacts use 2 slots: placement (location/interaction), effect (weirdness/power)
+      artifact: `You write 2-part artifact descriptions. Be brief and strange.
 
-AVOID: "ancient power", "mystical energy", "dark secrets", "forgotten magic"
+TONE: Science-fantasy. Objects have presence—they respond, remember, wait.
+AVOID: "ancient power", "mystical energy", "dark secrets"
 PREFER: strange physics, alien logic, things that recognize you
 
-RULES:
-- Preserve title exactly as given
-- 20-40 words, punchy, one sentence is fine
-- Incorporate weirdness naturally
+SLOT 1 - PLACEMENT (10-18 words):
+- Where it is + how it interacts with the room
+- Show relationship between artifact and environment
+- Example: "Iron Lens lies in the grass like a dropped eye, every blade angled toward it."
 
-Respond with JSON: {"title": "...", "description": "..."}`
+SLOT 2 - EFFECT (10-18 words):
+- Hint at power through subtle weirdness
+- Show what happens when you interact/observe
+- Example: "When you lift it, your shadow bends first—late to follow, as if it hesitates."
+
+Respond with JSON: {"title": "exact artifact name", "placement": "...", "effect": "..."}`
     };
   }
 }

@@ -112,6 +112,31 @@ export class LlamaManager {
   }
 
   /**
+   * Get temperature for the current mode
+   * Supports both legacy single-temperature config and new per-mode config
+   * @param {string} mode - The generation mode ('levelIntro' | 'artifact')
+   * @param {number} override - Optional override temperature
+   * @returns {number} Temperature value
+   */
+  getTemperatureForMode(mode, override) {
+    // If override provided, use it
+    if (override !== undefined) return override;
+
+    const tempConfig = this.config.get('llm.temperature');
+
+    // Backward compatibility: if config is a number, use it directly
+    if (typeof tempConfig === 'number') return tempConfig;
+
+    // Per-mode temperature: use mode-specific or default
+    if (typeof tempConfig === 'object') {
+      return tempConfig[mode] || tempConfig.default || 0.7;
+    }
+
+    // Fallback if config is malformed
+    return 0.7;
+  }
+
+  /**
    * Get or create a grammar from a JSON schema (cached)
    */
   async getGrammarForSchema(schema) {
@@ -142,7 +167,7 @@ export class LlamaManager {
       }
 
       const maxTokens = options.maxTokens ?? 500;
-      const temperature = options.temperature ?? this.config.get('llm.temperature', 0.8);
+      const temperature = this.getTemperatureForMode(options.mode, options.temperature);
       const topP = options.topP ?? 0.95;
       const topK = options.topK ?? 40;
 
@@ -190,7 +215,7 @@ export class LlamaManager {
     }
 
     const maxTokens = options.maxTokens ?? 500;
-    const temperature = options.temperature ?? this.config.get('llm.temperature', 0.8);
+    const temperature = this.getTemperatureForMode(options.mode, options.temperature);
     const topP = options.topP ?? 0.95;
     const topK = options.topK ?? 40;
 

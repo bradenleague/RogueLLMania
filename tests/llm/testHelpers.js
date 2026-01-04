@@ -138,26 +138,63 @@ export const QualityMetrics = {
   },
 
   /**
-   * Measure variety/uniqueness across multiple outputs
-   * Pass an array of texts and get variety metrics
+   * NEW VARIETY METRICS: Detect opening pattern repetition
+   * Extracts first 5 words from each text and measures uniqueness
    */
-  measureVariety(texts) {
+  measureOpeningPatterns(texts) {
     if (texts.length < 2) {
-      return { valid: true, score: 1.0, message: 'Need 2+ texts to measure variety' };
+      return { uniqueness: 1.0, patterns: [], mostCommon: null, repetitionRate: 0 };
     }
 
-    // Extract significant phrases (3+ word sequences)
-    const extractPhrases = (text) => {
+    const openings = texts.map(t => {
+      const words = t.split(/\s+/).slice(0, 5).join(' ').toLowerCase();
+      return words;
+    });
+
+    const patternCounts = {};
+    openings.forEach(o => {
+      patternCounts[o] = (patternCounts[o] || 0) + 1;
+    });
+
+    const patterns = Object.entries(patternCounts)
+      .map(([pattern, count]) => ({ pattern, count, percentage: count / texts.length }))
+      .sort((a, b) => b.count - a.count);
+
+    const uniquePatterns = patterns.length;
+    const mostCommon = patterns[0] || null;
+    const repetitionRate = mostCommon ? mostCommon.percentage : 0;
+
+    // Uniqueness: 1.0 if all unique, 0.0 if all identical
+    const uniqueness = uniquePatterns / texts.length;
+
+    return {
+      uniqueness,
+      patterns: patterns.slice(0, 5), // Top 5 patterns
+      mostCommon,
+      repetitionRate
+    };
+  },
+
+  /**
+   * NEW VARIETY METRICS: Enhanced phrase repetition with variable window sizes
+   * Detects repeated phrases of 4-8 words (not just 3)
+   */
+  measurePhraseRepetition(texts, windowSize = 6) {
+    if (texts.length < 2) {
+      return { diversity: 1.0, repeatedPhrases: [], worstOffenders: [] };
+    }
+
+    const extractPhrases = (text, window) => {
       const words = text.toLowerCase().split(/\s+/).filter(w => w.length > 2);
       const phrases = [];
-      for (let i = 0; i < words.length - 2; i++) {
-        phrases.push(words.slice(i, i + 3).join(' '));
+      for (let i = 0; i <= words.length - window; i++) {
+        phrases.push(words.slice(i, i + window).join(' '));
       }
       return phrases;
     };
 
-    // Count repeated phrases across all texts
-    const allPhrases = texts.flatMap(extractPhrases);
+    // Count phrases across all texts
+    const allPhrases = texts.flatMap(t => extractPhrases(t, windowSize));
     const phraseCounts = {};
     allPhrases.forEach(p => {
       phraseCounts[p] = (phraseCounts[p] || 0) + 1;
@@ -165,25 +202,137 @@ export const QualityMetrics = {
 
     const repeatedPhrases = Object.entries(phraseCounts)
       .filter(([_, count]) => count > 1)
-      .map(([phrase, count]) => ({ phrase, count }))
+      .map(([phrase, count]) => ({ phrase, count, percentage: count / texts.length }))
       .sort((a, b) => b.count - a.count);
 
-    // Calculate unique opening words (variety in sentence starts)
-    const openingWords = texts.map(t => t.split(/\s+/)[0]?.toLowerCase());
-    const uniqueOpenings = new Set(openingWords).size;
-    const openingVariety = uniqueOpenings / texts.length;
+    const worstOffenders = repeatedPhrases.filter(p => p.percentage > 0.3); // >30% repetition
 
-    // Calculate variety score (higher is better)
-    const repetitionPenalty = Math.min(repeatedPhrases.length * 0.1, 0.5);
-    const varietyScore = Math.max(0, (openingVariety - repetitionPenalty));
+    // Diversity: lower penalty for fewer repeated phrases
+    const repetitionPenalty = Math.min(repeatedPhrases.length * 0.05, 0.5);
+    const diversity = Math.max(0, 1.0 - repetitionPenalty);
 
     return {
-      valid: varietyScore >= 0.5,
+      diversity,
+      repeatedPhrases: repeatedPhrases.slice(0, 10), // Top 10
+      worstOffenders,
+      coverage: worstOffenders.length
+    };
+  },
+
+  /**
+   * NEW VARIETY METRICS: Detect closing pattern repetition
+   * Extracts last 8 words from each text and measures uniqueness
+   */
+  measureClosingPatterns(texts) {
+    if (texts.length < 2) {
+      return { uniqueness: 1.0, patterns: [], repeatedClosings: [] };
+    }
+
+    const closings = texts.map(t => {
+      const words = t.split(/\s+/);
+      const closing = words.slice(Math.max(0, words.length - 8)).join(' ').toLowerCase();
+      return closing;
+    });
+
+    const patternCounts = {};
+    closings.forEach(c => {
+      patternCounts[c] = (patternCounts[c] || 0) + 1;
+    });
+
+    const patterns = Object.entries(patternCounts)
+      .map(([pattern, count]) => ({ pattern, count, percentage: count / texts.length }))
+      .sort((a, b) => b.count - a.count);
+
+    const uniquePatterns = patterns.length;
+    const repeatedClosings = patterns.filter(p => p.count > 1);
+
+    const uniqueness = uniquePatterns / texts.length;
+
+    return {
+      uniqueness,
+      patterns: patterns.slice(0, 5),
+      repeatedClosings
+    };
+  },
+
+  /**
+   * NEW VARIETY METRICS: Measure structural diversity
+   * Detects when all outputs follow the same sentence-count pattern
+   */
+  measureStructuralDiversity(texts) {
+    if (texts.length < 2) {
+      return { variance: 1.0, templateScore: 1.0, structuralVariance: 1.0 };
+    }
+
+    // Count sentences per text (split on period, question mark, exclamation)
+    const sentenceCounts = texts.map(t => {
+      const sentences = t.split(/[.!?]+/).filter(s => s.trim().length > 0);
+      return sentences.length;
+    });
+
+    // Calculate variance in sentence counts
+    const avgSentences = sentenceCounts.reduce((sum, c) => sum + c, 0) / sentenceCounts.length;
+    const variance = sentenceCounts.reduce((sum, c) => sum + Math.pow(c - avgSentences, 2), 0) / sentenceCounts.length;
+
+    // Check if all texts have same sentence count (template indicator)
+    const uniqueSentenceCounts = new Set(sentenceCounts).size;
+    const templateScore = uniqueSentenceCounts / texts.length; // 1.0 if all different, lower if same
+
+    // Measure sentence length variance
+    const avgSentenceLengths = texts.map(t => {
+      const sentences = t.split(/[.!?]+/).filter(s => s.trim().length > 0);
+      const lengths = sentences.map(s => s.split(/\s+/).length);
+      return lengths.reduce((sum, l) => sum + l, 0) / (lengths.length || 1);
+    });
+
+    const avgLengthVariance = avgSentenceLengths.reduce((sum, l) => sum + Math.pow(l - avgSentences, 2), 0) / avgSentenceLengths.length;
+
+    // Overall structural variance (0.0 = identical structure, 1.0 = very diverse)
+    const structuralVariance = Math.min((variance + avgLengthVariance) / 10, 1.0);
+
+    return {
+      variance,
+      templateScore,
+      structuralVariance,
+      sentenceCounts,
+      uniqueSentenceCounts
+    };
+  },
+
+  /**
+   * UPDATED: Composite variety measurement using all new metrics
+   * Replaces old single-word + 3-word phrase detection with comprehensive analysis
+   */
+  measureVariety(texts) {
+    if (texts.length < 2) {
+      return { valid: true, score: 1.0, message: 'Need 2+ texts to measure variety' };
+    }
+
+    // Run all new variety metrics
+    const opening = this.measureOpeningPatterns(texts);
+    const middle = this.measurePhraseRepetition(texts, 6); // 6-word window
+    const closing = this.measureClosingPatterns(texts);
+    const structure = this.measureStructuralDiversity(texts);
+
+    // Weighted composite score (matches plan)
+    const varietyScore =
+      opening.uniqueness * 0.3 +
+      middle.diversity * 0.3 +
+      closing.uniqueness * 0.2 +
+      structure.structuralVariance * 0.2;
+
+    return {
+      valid: varietyScore >= 0.6, // Updated threshold from plan
       score: varietyScore,
-      repeatedPhrases: repeatedPhrases.slice(0, 5), // Top 5 repeated
-      uniqueOpenings,
+      openingPatterns: opening,
+      phraseRepetition: middle,
+      closingPatterns: closing,
+      structure: structure,
+      // Legacy fields for backward compatibility
+      repeatedPhrases: middle.repeatedPhrases.slice(0, 5),
+      uniqueOpenings: Math.round(opening.uniqueness * texts.length),
       totalTexts: texts.length,
-      openingVariety
+      openingVariety: opening.uniqueness
     };
   },
 

@@ -145,7 +145,7 @@ function setupEventListeners() {
       // Fallback: fetch model path via IPC
       ipcRenderer.invoke('get-model-path').then(modelDir => {
         if (modelDir) {
-          const fullPath = modelDir + '/qwen2.5-1.5b-instruct-q4_k_m.gguf';
+          const fullPath = modelDir + '/Qwen3-1.7B-Q4_K_M.gguf';
           console.log('[StartScreen] Fetched model path:', fullPath);
           appState.setState(STATES.READY, { modelPath: fullPath });
         } else {
@@ -213,11 +213,11 @@ function retryDownload() {
   // Immediately show downloading state
   appState.setState(STATES.DOWNLOADING, {
     model: {
-      name: 'Qwen2.5-1.5B-Instruct',
-      sizeGB: '1.1'
+      name: 'Qwen3-1.7B-Instruct',
+      sizeGB: '1.19'
     },
     downloaded: 0,
-    total: 1117320736,
+    total: 1282439360,
     percent: 0,
     speed: 0,
     type: 'preparing'
@@ -245,8 +245,8 @@ function startFakeProgress() {
       // Cap at 95% so real progress can take over and go to 100%
       const displayPercent = Math.min(fakeProgressPercent, 95);
       updateDownloadProgress({
-        downloaded: displayPercent / 100 * 1117320736,
-        total: 1117320736,
+        downloaded: displayPercent / 100 * 1282439360,
+        total: 1282439360,
         percent: displayPercent,
         speed: 0,
         type: 'preparing'
@@ -370,7 +370,7 @@ function renderDownloading(data) {
         </div>
         
         <div class="download-stats">
-          <span class="download-amount">${formatBytes(data.downloaded || 0)} / ${formatBytes(data.total || 1117320736)}</span>
+          <span class="download-amount">${formatBytes(data.downloaded || 0)} / ${formatBytes(data.total || 1282439360)}</span>
           <span class="download-percent">${Math.round(data.percent || 0)}%</span>
         </div>
 
@@ -402,12 +402,12 @@ function renderNeedsDownload() {
           To enable AI narration, we need to download a local model from Hugging Face.
         </p>
         <p class="download-details">
-          Model: Qwen2.5-1.5B-Instruct<br>
+          Model: Qwen3-1.7B-Instruct<br>
           Download size: ~1.1 GB<br>
           Storage: On your computer (one-time setup)
         </p>
         <p class="download-note">
-          <a href="https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF" target="_blank" class="model-link">Learn more about this model on Hugging Face →</a>
+          <a href="https://huggingface.co/lm-kit/qwen-3-1.7b-instruct-gguf" target="_blank" class="model-link">Learn more about this model on Hugging Face →</a>
         </p>
       </div>
 
@@ -466,7 +466,7 @@ function updateDownloadProgress(data) {
   const speedEl = startScreenEl.querySelector('.download-speed-info');
 
   if (amountEl) {
-    amountEl.textContent = `${formatBytes(data.downloaded || 0)} / ${formatBytes(data.total || 1117320736)}`;
+    amountEl.textContent = `${formatBytes(data.downloaded || 0)} / ${formatBytes(data.total || 1282439360)}`;
   }
 
   if (percentEl) {

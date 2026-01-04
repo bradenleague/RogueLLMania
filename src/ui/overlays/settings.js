@@ -44,7 +44,7 @@ async function updateSettingsDisplay(root) {
   // Fetch model information
   await fetchModelInfo();
 
-  const model = availableModels[0] || { name: 'Qwen2.5-1.5B-Instruct', size: '1.12GB' };
+  const model = availableModels[0] || { name: 'Qwen3-1.7B-Instruct', size: '1.19GB' };
   const isDownloaded = downloadedModels.length > 0;
 
   if (!root) return;
@@ -63,7 +63,7 @@ async function updateSettingsDisplay(root) {
         ${isDownloaded ? '✓ Installed' : '⚠ Not Installed'}
       </div>
       ${isDownloaded ? '' : `
-        <button id="downloadModelButton" class="btn btn-small btn-primary">Download Model (1.12GB)</button>
+        <button id="downloadModelButton" class="btn btn-small btn-primary">Download Model (1.19GB)</button>
       `}
       ${isDownloaded ? `
         <button id="deleteModelButton" class="btn btn-small btn-danger">Delete Model</button>
@@ -188,7 +188,7 @@ async function testConnection(root) {
     if (!ipcRenderer) {
       showTestResult(root, 'Electron IPC not available in this environment.', 'error');
     } else {
-      const result = await ipcRenderer.invoke('llm-test-connection', { model: 'qwen:1.5b' });
+      const result = await ipcRenderer.invoke('llm-test-connection', { model: 'qwen3:1.7b' });
       if (result.success) showTestResult(root, `${result.message}\n\n✓ Settings have been saved.`, 'success');
       else showTestResult(root, `${result.error}\n\n⚠️ Settings were saved, but connection test failed.`, 'error');
     }
@@ -233,13 +233,13 @@ async function downloadModel(root) {
 
     ipcRenderer.on('model-download-progress', progressListener);
 
-    const result = await ipcRenderer.invoke('llm-download-model', { model: 'qwen:1.5b' });
+    const result = await ipcRenderer.invoke('llm-download-model', { model: 'qwen3:1.7b' });
 
     ipcRenderer.removeListener('model-download-progress', progressListener);
 
     if (result.success) {
       await fetchModelInfo();
-      alert('Qwen2.5 model downloaded successfully!');
+      alert('Qwen3 model downloaded successfully!');
       await updateSettingsDisplay(root);
     } else {
       throw new Error(result.error || 'Download failed');
@@ -249,7 +249,7 @@ async function downloadModel(root) {
     alert(`Failed to download model: ${error.message}`);
   } finally {
     downloadButton.disabled = false;
-    downloadButton.textContent = 'Download Model (1.12GB)';
+    downloadButton.textContent = 'Download Model (1.19GB)';
     progressField.style.display = 'none';
   }
 }
@@ -274,7 +274,7 @@ function updateDownloadProgress(root, progress) {
 }
 
 async function deleteModel(root) {
-  if (!confirm('Are you sure you want to delete the Qwen2.5 model? This will require redownloading ~1.12GB.')) {
+  if (!confirm('Are you sure you want to delete the Qwen3 model? This will require redownloading ~1.19GB.')) {
     return;
   }
 
@@ -282,11 +282,11 @@ async function deleteModel(root) {
     const { ipcRenderer } = window.require ? window.require('electron') : { ipcRenderer: null };
     if (!ipcRenderer) throw new Error('IPC not available');
 
-    const result = await ipcRenderer.invoke('llm-delete-model', { model: 'qwen:1.5b' });
+    const result = await ipcRenderer.invoke('llm-delete-model', { model: 'qwen3:1.7b' });
 
     if (result.success) {
       await fetchModelInfo();
-      alert('Qwen2.5 model deleted successfully!');
+      alert('Qwen3 model deleted successfully!');
       await updateSettingsDisplay(root);
     } else {
       throw new Error(result.error || 'Delete failed');
@@ -300,5 +300,4 @@ async function deleteModel(root) {
 export function isSettingsDisplayOpen() {
   return isOverlayOpen('settings');
 }
-
 

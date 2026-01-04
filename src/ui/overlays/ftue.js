@@ -40,15 +40,15 @@ function updateFTUEDisplay(root) {
       </div>
 
       <div class="ftue-section">
-        <h2 class="ftue-section-title">🤖 Required: Qwen2.5 AI Model</h2>
+        <h2 class="ftue-section-title">🤖 Required: Qwen3 AI Model</h2>
         <p class="ftue-text">
-          Download Qwen2.5-1.5B model (~1.12 GB) to experience AI-generated content.
+          Download Qwen3-1.7B model (~1.19 GB) to experience AI-generated content.
           The model runs locally on your computer - no internet required after download!
         </p>
         <div class="ftue-features">
           <div class="ftue-feature">✨ Unique AI-generated storylines</div>
           <div class="ftue-feature">🔒 100% private - runs locally</div>
-          <div class="ftue-feature">📦 Single 1.12GB download</div>
+          <div class="ftue-feature">📦 Single 1.19GB download</div>
         </div>
       </div>
 
@@ -62,7 +62,7 @@ function updateFTUEDisplay(root) {
           </div>
           <div class="progress-text">
             <span id="progressPercent">0%</span>
-            <span id="progressSize">0MB / 1.12GB</span>
+            <span id="progressSize">0MB / 1.19GB</span>
           </div>
         </div>
       </div>

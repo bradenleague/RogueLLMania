@@ -1,6 +1,6 @@
 import { Events } from '../systems/eventBus.js';
 import { findFreeTile, pickupEntityWithTileRestore } from './placement.js';
-import { generateJson, JsonSchemas } from '../llm.js';
+import { generateJson, JsonSchemas, assembleArtifact } from '../llm.js';
 import { isLLMEnabled } from '../systems/settings.js';
 import { incrementArtifactsFound, addToInventory, getGameState, updateInventoryItem } from '../systems/gameState.js';
 import { refreshInventoryDisplay } from '../ui/overlays/inventory.js';
@@ -317,19 +317,40 @@ function constructDynamicPrompt(x, y, MAP_WIDTH, MAP_HEIGHT, levelNumber, underT
     return dynamicPrompt;
 }
 
-export async function generateStoryDetails(x, y, MAP_WIDTH, MAP_HEIGHT, levelNumber, underTile, map) {
-    if (!(await isLLMEnabled())) {
-        // Return a clearly labeled debug object
-        return {
-            title: DEBUG_ARTIFACT.title,
-            description: DEBUG_ARTIFACT.description
-        };
-    }
-    // Get the number of artifacts found so far
-    const { artifactsFound } = getGameState();
+// assembleArtifact is imported from shared schemas.js (includes punctuation cleanup)
+// Alias for backward compatibility with local code
+const assembleArtifactDescription = assembleArtifact;
 
+/**
+ * Generate fallback artifact description using slots
+ * Uses the same slot structure as LLM generation for consistency
+ */
+function generateFallbackArtifactSlots(procSeed) {
+    // Placement slot (10-18 words): location + simple positioning
+    const placement = `${procSeed.title} rests ${procSeed.position || 'here'}, ${procSeed.material} gleaming faintly`;
+
+    // Effect slot (10-18 words): power hint
+    const effect = `${procSeed.power || 'Its purpose remains unclear, waiting for discovery'}`;
+
+    return { placement, effect };
+}
+
+export async function generateStoryDetails(x, y, MAP_WIDTH, MAP_HEIGHT, levelNumber, underTile, map) {
     // Build deterministic proc‑gen seed from level + coords; use as LLM scaffold and fallback text
     const procSeed = buildProcgenArtifact(x, y, MAP_WIDTH, MAP_HEIGHT, levelNumber, underTile, map);
+
+    if (!(await isLLMEnabled())) {
+        // Use fallback slot generation
+        const slots = generateFallbackArtifactSlots(procSeed);
+        const description = assembleArtifactDescription(slots);
+        return {
+            title: procSeed.title,
+            description
+        };
+    }
+
+    // Get the number of artifacts found so far
+    const { artifactsFound } = getGameState();
 
     // Ask LLM to polish the proc‑gen seed (deterministic base), retaining our title
     const dynamicPrompt = constructDynamicPrompt(
@@ -341,23 +362,37 @@ export async function generateStoryDetails(x, y, MAP_WIDTH, MAP_HEIGHT, levelNum
 
     try {
         // Generate JSON with schema enforcement and mode for system prompt
+        // Returns {title, placement, effect} slots
         const result = await generateJson(dynamicPrompt, JsonSchemas.artifact, { mode: 'artifact' });
 
-        // Extract title and description from JSON result
+        // Extract title and slots from JSON result
         title = result.title || procSeed.title;
-        description = result.description || procSeed.fallbackText;
 
-        // Clean up any thinking tags that might be inside the description
-        description = description.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+        // Assemble description from slots
+        if (result.placement && result.effect) {
+            description = assembleArtifactDescription({
+                placement: result.placement,
+                effect: result.effect
+            });
+        } else {
+            // Fallback if slots are missing
+            const slots = generateFallbackArtifactSlots(procSeed);
+            description = assembleArtifactDescription(slots);
+        }
 
         logger.info(`Generated artifact: ${title}`);
     } catch (error) {
         logger.error(`Failed to generate artifact description: ${error.message}`, error);
-        description = procSeed.fallbackText;
+
+        // Use fallback slot generation on error
+        const slots = generateFallbackArtifactSlots(procSeed);
+        description = assembleArtifactDescription(slots);
     }
 
     if (!description || description.length === 0) {
-        description = procSeed.fallbackText;
+        // Last resort fallback
+        const slots = generateFallbackArtifactSlots(procSeed);
+        description = assembleArtifactDescription(slots);
     }
 
     return { title, description };

@@ -1,4 +1,4 @@
-import { generateJson, JsonSchemas } from '../llm.js';
+import { generateJson, JsonSchemas, assembleLevelIntro } from '../llm.js';
 import { isLLMEnabled } from './settings.js';
 import { determineLevelType } from '../levels/tileGeneration.js';
 import { Events } from './eventBus.js';
@@ -217,42 +217,94 @@ function constructLevelIntroductionPrompt(context) {
     return prompt;
 }
 
+// assembleLevelIntro is imported from shared schemas.js (includes punctuation cleanup)
+
+/**
+ * Generate fallback slots for when LLM is disabled or fails
+ * Uses the same slot structure as LLM generation for consistency
+ */
+function generateFallbackSlots(context) {
+    const { levelType, dominantTile, monsterCount, monsterTypes, storyObjectDetails } = context;
+
+    // Room slot (8-14 words): environment + sensory detail
+    const tileDesc = tileAtmospheres[dominantTile] || 'ancient stone';
+    const templates = levelTypeTemplates[levelType] || levelTypeTemplates.basic;
+    const roomTemplate = templates[Math.floor(Math.random() * templates.length)];
+    const room = roomTemplate.replace('{tileDescription}', tileDesc);
+
+    // Threat slot (6-12 words): monster presence
+    const monsterType = Object.keys(monsterTypes)[0] || 'unknown';
+    const monsterAtmosphere = monsterAtmospheres[monsterType];
+    let threat;
+    if (monsterAtmosphere) {
+        threat = monsterCount > 2 ? monsterAtmosphere.many : monsterAtmosphere.few;
+    } else {
+        threat = monsterCount > 2
+            ? `Multiple threats lurk in the shadows, waiting`
+            : `A lone presence watches from the darkness`;
+    }
+
+    // Oddity slot (8-14 words): uncanny detail or artifact tease
+    let oddity;
+    if (storyObjectDetails) {
+        oddity = `Something called ${storyObjectDetails.title} rests here, its purpose unclear`;
+    } else {
+        const oddities = [
+            `The air itself seems to remember something you've forgotten`,
+            `Shadows fall at angles that don't quite match the light`,
+            `The silence has texture, like it's been waiting for your arrival`
+        ];
+        oddity = oddities[Math.floor(Math.random() * oddities.length)];
+    }
+
+    return { room, threat, oddity };
+}
+
 /**
  * Generate a level introduction using the LLM with JSON schema
+ * SLOT-BASED: Returns {room, threat, oddity} from LLM, then assembles into final description
  */
 export async function generateLevelIntroduction(map, MAP_WIDTH, MAP_HEIGHT, levelNumber, monsters, staticObjects, storyObject) {
+    // Analyze the level context first (needed for both LLM and fallback)
+    const context = analyzeLevelContext(map, MAP_WIDTH, MAP_HEIGHT, levelNumber, monsters, staticObjects, storyObject);
+
     if (!(await isLLMEnabled())) {
+        // Use fallback slot generation
+        const slots = generateFallbackSlots(context);
+        const description = assembleLevelIntro(slots);
         return {
             title: `Chamber ${levelNumber}`,
-            description: `DEBUG: You enter level ${levelNumber} (${determineLevelType(levelNumber)} type) with ${monsters.length} monsters and ${staticObjects.length} objects. This is a debug introduction - LLM is disabled.`
+            description
         };
     }
 
     try {
-        // Analyze the level context
-        const context = analyzeLevelContext(map, MAP_WIDTH, MAP_HEIGHT, levelNumber, monsters, staticObjects, storyObject);
-
         // Construct the dynamic prompt
         const prompt = constructLevelIntroductionPrompt(context);
 
         // Generate JSON with schema enforcement and mode for system prompt
-        const result = await generateJson(prompt, JsonSchemas.levelIntro, { mode: 'levelIntro' });
+        // Returns {room, threat, oddity} slots
+        const slots = await generateJson(prompt, JsonSchemas.levelIntro, { mode: 'levelIntro' });
+
+        // Assemble slots into final description
+        const description = assembleLevelIntro(slots);
 
         logger.info(`Generated introduction for level ${levelNumber} (${context.levelType})`);
 
         return {
             title: `Chamber ${levelNumber}`,
-            description: result.description || 'A mysterious chamber awaits...'
+            description
         };
-        
+
     } catch (error) {
         logger.error(`Failed to generate level introduction: ${error.message}`, error);
-        
-        // Fallback description
-        const levelType = determineLevelType(levelNumber);
+
+        // Use fallback slot generation on error
+        const slots = generateFallbackSlots(context);
+        const description = assembleLevelIntro(slots);
         return {
             title: `Chamber ${levelNumber}`,
-            description: `You step into chamber ${levelNumber}, a ${levelType} space that echoes with ancient mysteries. The shadows seem to shift with unseen presences, and the air itself whispers of adventures yet to unfold.`
+            description
         };
     }
 }

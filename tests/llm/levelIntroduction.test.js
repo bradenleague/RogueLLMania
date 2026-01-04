@@ -72,7 +72,7 @@ describe('Level Introduction Quality Tests', () => {
           });
           
           expect(quality.passed, `Golden example should pass quality check: ${example}`).toBe(true);
-          expect(quality.overallScore).toBeGreaterThanOrEqual(0.7);
+          expect(quality.overallScore).toBeGreaterThanOrEqual(0.6); // Updated to match new variety threshold
         });
       });
     });

@@ -8,7 +8,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
 
-const MODEL_PATH = join(os.homedir(), 'Library/Application Support/RogueLLMania/models/qwen2.5/main/qwen2.5-1.5b-instruct-q4_k_m.gguf');
+const MODEL_PATH = join(os.homedir(), 'Library/Application Support/RogueLLMania/models/qwen3/main/Qwen3-1.7B-Q4_K_M.gguf');
 
 async function runTests() {
   console.log('🔧 Loading model...\n');
