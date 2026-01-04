@@ -1,8 +1,8 @@
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { getLlama, LlamaChatSession } from 'node-llama-cpp';
-import fs from 'fs/promises';
-import { error, debug } from '../../systems/logger.js';
+import { fileURLToPath } from "url";
+import { dirname, join, isAbsolute } from "path";
+import { getLlama, LlamaChatSession } from "node-llama-cpp";
+import fs from "fs/promises";
+import { error, debug } from "../../systems/logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -27,7 +27,7 @@ export class LlamaManager {
       this.isInitialized = true;
       return { success: true };
     } catch (error) {
-      error('Failed to initialize llama.cpp:', error);
+      error("Failed to initialize llama.cpp:", error);
       return { success: false, error: error.message };
     }
   }
@@ -38,8 +38,8 @@ export class LlamaManager {
         await this.initialize();
       }
 
-      const modelPathAbsolute = modelPath.startsWith('/') 
-        ? modelPath 
+      const modelPathAbsolute = isAbsolute(modelPath)
+        ? modelPath
         : join(this.config.getModelDir(), modelPath);
 
       if (!(await this.fileExists(modelPathAbsolute))) {
@@ -65,16 +65,16 @@ export class LlamaManager {
       this.contextSequence = this.context.getSequence();
 
       this.session = new LlamaChatSession({
-        contextSequence: this.contextSequence
+        contextSequence: this.contextSequence,
       });
 
       return {
         success: true,
         contextSize,
-        gpu: gpu
+        gpu: gpu,
       };
     } catch (err) {
-      error('Failed to load model:', err);
+      error("Failed to load model:", err);
       return { success: false, error: err.message };
     }
   }
@@ -90,7 +90,7 @@ export class LlamaManager {
     }
 
     if (!this.contextSequence) {
-      throw new Error('Cannot set mode: no context sequence available');
+      throw new Error("Cannot set mode: no context sequence available");
     }
 
     const systemPrompts = this.config.getSystemPrompts();
@@ -100,12 +100,14 @@ export class LlamaManager {
       throw new Error(`Unknown mode: ${mode}`);
     }
 
-    debug(`[LlamaManager] Switching mode from '${this.currentMode}' to '${mode}'`);
+    debug(
+      `[LlamaManager] Switching mode from '${this.currentMode}' to '${mode}'`,
+    );
 
     // Recreate session with new system prompt, reusing the same context sequence
     this.session = new LlamaChatSession({
       contextSequence: this.contextSequence,
-      systemPrompt
+      systemPrompt,
     });
 
     this.currentMode = mode;
@@ -122,13 +124,13 @@ export class LlamaManager {
     // If override provided, use it
     if (override !== undefined) return override;
 
-    const tempConfig = this.config.get('llm.temperature');
+    const tempConfig = this.config.get("llm.temperature");
 
     // Backward compatibility: if config is a number, use it directly
-    if (typeof tempConfig === 'number') return tempConfig;
+    if (typeof tempConfig === "number") return tempConfig;
 
     // Per-mode temperature: use mode-specific or default
-    if (typeof tempConfig === 'object') {
+    if (typeof tempConfig === "object") {
       return tempConfig[mode] || tempConfig.default || 0.7;
     }
 
@@ -141,7 +143,7 @@ export class LlamaManager {
    */
   async getGrammarForSchema(schema) {
     if (!this.llama) {
-      throw new Error('Llama not initialized');
+      throw new Error("Llama not initialized");
     }
 
     const schemaKey = JSON.stringify(schema);
@@ -149,7 +151,7 @@ export class LlamaManager {
       return this.grammarCache.get(schemaKey);
     }
 
-    debug('[LlamaManager] Creating grammar for schema:', schema);
+    debug("[LlamaManager] Creating grammar for schema:", schema);
     const grammar = await this.llama.createGrammarForJsonSchema(schema);
     this.grammarCache.set(schemaKey, grammar);
     return grammar;
@@ -157,7 +159,7 @@ export class LlamaManager {
 
   async generate(prompt, options = {}) {
     if (!this.model || !this.context || !this.session) {
-      return { success: false, error: 'No model loaded' };
+      return { success: false, error: "No model loaded" };
     }
 
     try {
@@ -167,7 +169,10 @@ export class LlamaManager {
       }
 
       const maxTokens = options.maxTokens ?? 500;
-      const temperature = this.getTemperatureForMode(options.mode, options.temperature);
+      const temperature = this.getTemperatureForMode(
+        options.mode,
+        options.temperature,
+      );
       const topP = options.topP ?? 0.95;
       const topK = options.topK ?? 40;
 
@@ -177,12 +182,15 @@ export class LlamaManager {
         topP,
         topK,
         seed: options.seed,
-        repeatPenalty: options.repeatPenalty ?? this.config.get('llm.repeatPenalty'),
+        repeatPenalty:
+          options.repeatPenalty ?? this.config.get("llm.repeatPenalty"),
       };
 
       // Add grammar if JSON schema provided
       if (options.jsonSchema) {
-        promptOptions.grammar = await this.getGrammarForSchema(options.jsonSchema);
+        promptOptions.grammar = await this.getGrammarForSchema(
+          options.jsonSchema,
+        );
       }
 
       const response = await this.session.prompt(prompt, promptOptions);
@@ -193,20 +201,23 @@ export class LlamaManager {
         try {
           result.parsed = promptOptions.grammar.parse(response);
         } catch (parseErr) {
-          debug('[LlamaManager] JSON parse failed, returning raw:', parseErr.message);
+          debug(
+            "[LlamaManager] JSON parse failed, returning raw:",
+            parseErr.message,
+          );
         }
       }
 
       return result;
     } catch (err) {
-      error('Generation failed:', err);
+      error("Generation failed:", err);
       return { success: false, error: err.message };
     }
   }
 
   async generateStream(prompt, options = {}, onToken) {
     if (!this.model || !this.context || !this.session) {
-      throw new Error('No model loaded');
+      throw new Error("No model loaded");
     }
 
     // Switch mode if specified (changes system prompt)
@@ -215,11 +226,14 @@ export class LlamaManager {
     }
 
     const maxTokens = options.maxTokens ?? 500;
-    const temperature = this.getTemperatureForMode(options.mode, options.temperature);
+    const temperature = this.getTemperatureForMode(
+      options.mode,
+      options.temperature,
+    );
     const topP = options.topP ?? 0.95;
     const topK = options.topK ?? 40;
 
-    let fullText = '';
+    let fullText = "";
 
     // Create abort controller for this generation
     this.abortController = new AbortController();
@@ -231,7 +245,8 @@ export class LlamaManager {
         topP,
         topK,
         seed: options.seed,
-        repeatPenalty: options.repeatPenalty ?? this.config.get('llm.repeatPenalty'),
+        repeatPenalty:
+          options.repeatPenalty ?? this.config.get("llm.repeatPenalty"),
         signal: this.abortController.signal,
         stopOnAbortSignal: true, // Graceful stop, returns partial text
         onTextChunk: (chunk) => {
@@ -239,7 +254,7 @@ export class LlamaManager {
             fullText += chunk;
             onToken(chunk);
           }
-        }
+        },
       };
 
       // Add grammar if JSON schema provided
@@ -257,13 +272,16 @@ export class LlamaManager {
         try {
           result.parsed = grammar.parse(fullText);
         } catch (parseErr) {
-          debug('[LlamaManager] JSON parse failed, returning raw:', parseErr.message);
+          debug(
+            "[LlamaManager] JSON parse failed, returning raw:",
+            parseErr.message,
+          );
         }
       }
 
       return result;
     } catch (err) {
-      error('Streaming generation failed:', err);
+      error("Streaming generation failed:", err);
       throw err;
     } finally {
       this.abortController = null;
@@ -273,7 +291,7 @@ export class LlamaManager {
   getAvailableMemory() {
     const totalRam = this.config.getTotalRAM();
     const freeRam = this.config.getFreeRAM();
-    
+
     let recommendedContextSize;
     if (totalRam < 8) {
       recommendedContextSize = 2048;
@@ -286,7 +304,7 @@ export class LlamaManager {
     return {
       totalRam,
       freeRam,
-      recommendedContextSize
+      recommendedContextSize,
     };
   }
 
