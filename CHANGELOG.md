@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.2
+
+- **Windows Build Fix**
+  - Fixed Windows build that was broken in v0.1.1
+
 ## 0.1.1
 
 - **macOS Code Signing**

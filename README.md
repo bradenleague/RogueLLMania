@@ -85,8 +85,8 @@ npm run benchmark
 
 ## Platform Support
 
-- **macOS**: Packaged build (.dmg) with code signing. Validated for v0.1.1.
-- **Windows**: Packaged build (.exe). Validated for v0.1.0 (v0.1.1 pending).
+- **macOS**: Packaged build (.dmg) with code signing. Validated for v0.1.2.
+- **Windows**: Packaged build (.exe). Validated for v0.1.2.
 - **Linux**: Runs via `npm start`/Electron; packaged build (.AppImage) not yet tested.
 
 ## Model Information
