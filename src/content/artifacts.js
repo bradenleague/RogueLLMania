@@ -84,34 +84,43 @@ export const ARTIFACT_MATERIALS = {
   };
 
 // Tile-specific themes and descriptions
+// AESTHETIC: Scavengers Reign meets Numenera - alien biology, incomprehensible technology,
+// symbiotic relationships, billion-year-old purpose, things that remember or respond
 export const TILE_THEMES = {
     moss: {
-        themes: "Themes: organic, living, damp, regrowth, nature, water, green.",
-        environmentDescription: "The artifact is partially hidden in thick, damp moss, its surface beaded with droplets of water."
+        // Moss as living membrane, symbiotic organism, something that metabolizes
+        themes: "symbiotic, metabolic, breathing substrate, living membrane, host-organism, slow digestion",
+        environmentDescription: "The moss has grown around it in deliberate patterns—or perhaps the artifact taught the moss how to grow."
     },
     grass: {
-        themes: "Themes: growth, renewal, softness, nature, green, life.",
-        environmentDescription: "Blades of soft grass curl around the base of the artifact, as if nature itself is cradling it."
+        // Grass as sensing network, collective organism, substrate intelligence
+        themes: "root-networked, sensing, collective whisper, substrate-aware, blade-antenna, field-mind",
+        environmentDescription: "The grass bends toward the artifact even without wind, each blade oriented like an antenna receiving something you cannot hear."
     },
     dirt: {
-        themes: "Themes: earth, burial, age, dust, brown, hidden, decay.",
-        environmentDescription: "It is half-buried in dusty earth, as though the ground has tried to reclaim it over centuries."
+        // Dirt as compressed time, burial memory, geological intention
+        themes: "burial-deep, sediment-memory, compressed ages, fossil-intention, deliberate interment, loam-secret",
+        environmentDescription: "The earth here feels intentional—not eroded into place but arranged, as if something buried this and expected it to be found."
     },
     cobblestone: {
-        themes: "Themes: ancient, civilization, endurance, stone, history, grey.",
-        environmentDescription: "It rests atop ancient cobblestones, their worn surfaces whispering of forgotten footsteps."
+        // Cobblestone as ancient purpose, builder-unknown geometry, path-memory
+        themes: "purpose-built, geometry-meant, path-remembering, builder-unknown, pattern-logic, worn-intention",
+        environmentDescription: "The cobblestones form a subtle pattern around it, worn by feet that walked here before feet existed."
     },
     stone: {
-        themes: "Themes: ancient, sturdy, cold, unyielding, endurance, grey.",
-        environmentDescription: "The artifact sits on cold, hard stone, echoing the chamber's ancient silence."
+        // Stone as planetary bone, deep-time witness, pressure-formed patience
+        themes: "planetary-bone, pressure-formed, deep-time witness, mountain-fragment, elemental patience, tectonic memory",
+        environmentDescription: "The stone beneath it is older than language—it has waited for this artifact, or the artifact has waited for you to find it here."
     },
     water: {
-        themes: "Themes: fluidity, reflection, depth, blue, mystery, change.",
-        environmentDescription: "It glimmers just above the surface of still water, reflections dancing across its form."
+        // Water as threshold, reflection of elsewhere, depth that lies
+        themes: "threshold-state, depth-liar, reflection-elsewhere, surface-membrane, fluid boundary, drowned perspective",
+        environmentDescription: "The water's surface shows the artifact twice—once as it is, once as it might be, and the two images do not quite match."
     },
     sand: {
-        themes: "Themes: shifting, time, buried, golden, desert, dryness.",
-        environmentDescription: "Half-buried in shifting sand, only a glint reveals its presence."
+        // Sand as erosion-clock, particle memory, time ground fine
+        themes: "erosion-measured, particle-scattered, wind-sorted, time-granular, desert-entropy, dust-becoming",
+        environmentDescription: "The sand flows around the artifact like a stream parting around a stone, though there is no wind to move it."
     }
 };
 
@@ -140,31 +149,99 @@ export const MATERIAL_BIASES = {
 };
 
 // Environmental context based on surrounding tiles (3x3 area analysis)
+// These power hints should feel like strange, half-understood phenomena
 export const ENVIRONMENTAL_INFLUENCES = {
-    // When water is nearby (even if not directly under)
+    // When water is nearby - threshold states, reflections, fluid boundaries
     nearWater: {
         probability: 0.4,
         materials: ["bronze", "brass"],
         finishBonus: ["verdigris‑stained", "oil‑sheen"],
-        powerHints: ["reflects depths", "echoes with moisture", "weeps condensation"]
+        powerHints: [
+            "shows you standing somewhere you haven't reached yet",
+            "makes the water forget how to reflect",
+            "drinks from depths that aren't there"
+        ]
     },
-    
-    // When surrounded mostly by stone/walls
+
+    // When surrounded mostly by stone/walls - pressure, patience, deep time
     enclosed: {
         probability: 0.5,
         materials: ["wrought iron", "blackened steel"],
-        finishBonus: ["hammer‑marked", "forge‑born"],
-        powerHints: ["resonates with stone", "anchored to bedrock", "sleeps in shadow"]
+        finishBonus: ["hammer‑marked", "pressure‑formed"],
+        powerHints: [
+            "remembers when these walls were molten",
+            "makes the stone hum at frequencies bones understand",
+            "has been waiting here longer than the chamber has existed"
+        ]
     },
-    
-    // When in mixed/transitional areas
+
+    // When in mixed/transitional areas - boundaries, thresholds, change
     transitional: {
         probability: 0.3,
         materials: ["steel", "iron"],
         finishBonus: ["slag‑scored", "gear‑toothed"],
-        powerHints: ["bridges elements", "shifts with surroundings", "adapts to touch"]
+        powerHints: [
+            "exists more strongly at the edges of things",
+            "translates between materials that shouldn't understand each other",
+            "marks the place where one thing becomes another"
+        ]
     }
 };
+
+// Seeded weirdness injection - picked deterministically based on coordinates
+// These add variety by suggesting strange phenomena the model can incorporate
+// USAGE: Pick one using seeded RNG and include in XML as <weirdness_hint>
+export const WEIRDNESS_MODIFIERS = {
+    // Perceptual strangeness - things that affect how you see/sense
+    perceptual: [
+        "It seems slightly larger when you're not looking directly at it",
+        "Your shadow bends toward it",
+        "The air tastes different near it—metallic, or maybe like rain",
+        "Sound behaves strangely here; your footsteps arrive late",
+        "It occupies space in a way that makes distances hard to judge"
+    ],
+
+    // Temporal strangeness - things related to time
+    temporal: [
+        "Dust settles on it faster than it should",
+        "It looks older from some angles than others",
+        "Your memories of approaching it feel longer than the walk took",
+        "It has the patience of something that has already waited forever",
+        "The moment you saw it feels like it happened twice"
+    ],
+
+    // Agency/awareness - things that seem to respond or know
+    agency: [
+        "It was facing the entrance before you arrived",
+        "It seems to have been expecting you specifically",
+        "Something about its position suggests it moved here recently",
+        "It gives the impression of having just stopped doing something",
+        "The way it rests implies intention, not accident"
+    ],
+
+    // Material strangeness - things about its physical nature
+    material: [
+        "Its weight shifts when you're not holding it",
+        "The surface is warmer than the air, with no heat source",
+        "It doesn't reflect light the way its material should",
+        "Touching it feels like being touched back",
+        "It's dry in a way that makes wet things seem wrong"
+    ],
+
+    // Spatial strangeness - things about where/how it exists
+    spatial: [
+        "It casts a shadow that doesn't quite match its shape",
+        "The ground beneath it is slightly worn, as if from centuries of presence",
+        "It seems more real than its surroundings",
+        "Other objects in the room orient subtly toward it",
+        "It exists more emphatically than things usually do"
+    ]
+};
+
+// Helper to get all weirdness modifiers as a flat array
+export function getAllWeirdnessModifiers() {
+    return Object.values(WEIRDNESS_MODIFIERS).flat();
+}
 
 // Example artifact descriptions for LLM reference
 export const EXAMPLE_ARTIFACTS = {

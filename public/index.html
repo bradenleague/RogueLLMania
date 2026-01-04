@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
+    <div id="startScreen"></div>
+
     <div id="app">
         <div class="viewport">
           <div class="bar bar-left" aria-hidden="true"></div>
@@ -39,6 +41,8 @@
     <div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
 
     <script src="../node_modules/rot-js/dist/rot.js"></script>
+    <script type="module" src="../src/ui/startScreen.js"></script>
+    <script type="module" src="../src/ui/index.js"></script>
     <script type="module" src="../src/game.js"></script>
     <script>
       // Basic responsive resize for ROT display

@@ -1,15 +1,19 @@
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
-const path = require('path');
+import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron';
+import path from 'path';
+import { createLlamaSystem } from './main/llm/index.js';
+import { info, error, warn, debug } from './systems/logger.js';
 
 let mainWindow;
 let store; // Will be initialized with dynamic import
+let llmBridge; // New LLM bridge instance
+let llmInitialized = false;
 
 // Initialize settings store with dynamic import
 async function initializeStore() {
     const { default: Store } = await import('electron-store');
     store = new Store({
         defaults: {
-            ollamaModel: 'gemma3n:e4b',
+            llmModel: 'qwen3:1.7b',
             enableLLM: true,
             fullscreen: false,
             windowWidth: 1200,
@@ -18,6 +22,71 @@ async function initializeStore() {
         }
     });
 }
+
+// Initialize llama.cpp system
+async function initializeLLM() {
+    try {
+        const llamaSystem = await createLlamaSystem({
+            appDataPath: app.getPath('userData')
+        });
+
+        await llamaSystem.bridge.initialize();
+
+        // Set up event forwarding to renderer
+        llamaSystem.bridge.on('model-download-started', (data) => {
+            info('[Main] LlamaBridge emitted model-download-started, forwarding to renderer');
+            if (mainWindow) {
+                mainWindow.webContents.send('llm-model-download-started', data);
+                info('[Main] Sent llm-model-download-started to renderer');
+            } else {
+                warn('[Main] Cannot forward event - mainWindow is null');
+            }
+        });
+
+        llamaSystem.bridge.on('model-download-progress', (data) => {
+            info('[Main] LlamaBridge emitted model-download-progress', data.percent ? `${data.percent.toFixed(1)}%` : '');
+            if (mainWindow) {
+                mainWindow.webContents.send('llm-model-download-progress', data);
+            }
+        });
+
+        llamaSystem.bridge.on('model-download-complete', (data) => {
+            info('[Main] LlamaBridge emitted model-download-complete, forwarding to renderer');
+            info('[Main] Event data:', JSON.stringify(data));
+            if (mainWindow) {
+                mainWindow.webContents.send('llm-model-download-complete', data);
+                info('[Main] Sent llm-model-download-complete to renderer');
+            } else {
+                warn('[Main] Cannot forward event - mainWindow is null');
+            }
+        });
+
+        llamaSystem.bridge.on('model-download-error', (data) => {
+            error('[Main] LlamaBridge emitted model-download-error, forwarding to renderer');
+            if (mainWindow) {
+                mainWindow.webContents.send('llm-model-download-error', data);
+            }
+        });
+
+        llmBridge = llamaSystem.bridge;
+        llmInitialized = true;
+
+        info('llama.cpp initialized successfully');
+        return { success: true, mode: 'llama.cpp' };
+    } catch (err) {
+        error('Failed to initialize llama.cpp:', err);
+        llmInitialized = false;
+
+        return {
+            success: false,
+            error: error.message,
+            mode: 'none',
+            message: 'llama.cpp initialization failed. LLM features will be unavailable.'
+        };
+    }
+}
+
+
 
 function createWindow() {
   // Parse --log-level argument
@@ -67,128 +136,222 @@ function createWindow() {
   });
 }
 
-// Add IPC handler for Ollama API calls
-ipcMain.handle('ollama-generate', async (event, { model, prompt, stream }) => {
+// Add IPC handler for LLM generation
+ipcMain.handle('llm-generate', async (event, { model, prompt, temperature, maxTokens, jsonSchema, mode, seed }) => {
   try {
-    console.log('[Main Process] Sending request to Ollama:', { model, prompt });
-    
-    // Test if Ollama service is running first
-    let response;
-    try {
-      response = await fetch('http://127.0.0.1:11434/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, prompt, stream }),
-      });
-    } catch (fetchError) {
-      // Network/connection error
-      return { 
-        success: false, 
-        error: 'Cannot connect to Ollama service. Please ensure Ollama is running on port 11434.',
-        errorType: 'CONNECTION_ERROR'
+    debug('[Main Process] LLM generation request:', { model, prompt: prompt.substring(0, 50), hasSchema: !!jsonSchema, mode });
+
+    if (!llmInitialized || !llmBridge) {
+      return {
+        success: false,
+        error: 'LLM not initialized',
+        errorType: 'NOT_INITIALIZED'
       };
     }
-    
-    if (!response.ok) {
-      let errorMessage = `Ollama API request failed with status ${response.status}`;
-      let errorType = 'API_ERROR';
-      
-      if (response.status === 404) {
-        errorMessage = `Model '${model}' not found. Please check the model name or pull the model using: ollama pull ${model}`;
-        errorType = 'MODEL_NOT_FOUND';
-      } else if (response.status === 400) {
-        const errorData = await response.text();
-        errorMessage = `Bad request: ${errorData}`;
-        errorType = 'BAD_REQUEST';
-      } else if (response.status >= 500) {
-        errorMessage = `Ollama server error (${response.status}). Please check your Ollama installation.`;
-        errorType = 'SERVER_ERROR';
-      }
-      
-      return { success: false, error: errorMessage, errorType };
-    }
-    
-    const data = await response.json();
-    console.log('[Main Process] Received response from Ollama:', data);
-    return { success: true, data };
-  } catch (error) {
-    console.error('[Main Process] Error:', error);
-    return { 
-      success: false, 
-      error: `Unexpected error: ${error.message}`,
-      errorType: 'UNKNOWN_ERROR'
+
+    const result = await llmBridge.chat({
+      prompt,
+      model,
+      temperature,
+      maxTokens,
+      jsonSchema,
+      mode,
+      seed
+    });
+
+    return result;
+  } catch (err) {
+    error('[Main Process] LLM generation error:', err);
+    return {
+      success: false,
+      error: err.message,
+      errorType: 'GENERATION_ERROR'
     };
   }
 });
 
-// Add IPC event for streaming Ollama responses
-ipcMain.on('ollama-generate-stream', async (event, { model, prompt }) => {
+// Add IPC event for streaming LLM responses
+ipcMain.on('llm-generate-stream', async (event, { model, prompt, temperature, maxTokens, jsonSchema, mode, seed }) => {
   try {
-    console.log('[Main Process] Streaming request to Ollama:', { model, prompt });
-    let response;
-    try {
-      response = await fetch('http://127.0.0.1:11434/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, prompt, stream: true }),
-      });
-    } catch (fetchError) {
-      event.sender.send('ollama-generate-stream-error', { error: 'Cannot connect to Ollama service. Please ensure Ollama is running on port 11434.', errorType: 'CONNECTION_ERROR' });
+    debug('[Main Process] LLM streaming request:', { model, prompt: prompt.substring(0, 50), hasSchema: !!jsonSchema, mode });
+
+    if (!llmInitialized || !llmBridge) {
+      event.sender.send('llm-generate-stream-error', { error: 'LLM not initialized', errorType: 'NOT_INITIALIZED' });
       return;
     }
 
-    if (!response.ok) {
-      let errorMessage = `Ollama API request failed with status ${response.status}`;
-      let errorType = 'API_ERROR';
-      if (response.status === 404) {
-        errorMessage = `Model '${model}' not found. Please check the model name or pull the model using: ollama pull ${model}`;
-        errorType = 'MODEL_NOT_FOUND';
-      } else if (response.status >= 500) {
-        errorMessage = `Ollama server error (${response.status}). Please check your Ollama installation.`;
-        errorType = 'SERVICE_ERROR';
-      }
-      event.sender.send('ollama-generate-stream-error', { error: errorMessage, errorType });
-      return;
-    }
+    await llmBridge.chatStream({
+      prompt,
+      model,
+      temperature,
+      maxTokens,
+      jsonSchema,
+      mode,
+      seed
+    }, (chunk) => {
+      event.sender.send('llm-generate-stream-data', { content: chunk });
+    });
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let lines = buffer.split('\n');
-      buffer = lines.pop(); // last line may be incomplete
-      for (const line of lines) {
-        if (line.trim()) {
-          try {
-            const json = JSON.parse(line);
-            event.sender.send('ollama-generate-stream-data', json);
-          } catch (e) {
-            // Ignore parse errors for incomplete lines
-          }
-        }
-      }
-    }
-    // Send any remaining buffer
-    if (buffer.trim()) {
-      try {
-        const json = JSON.parse(buffer);
-        event.sender.send('ollama-generate-stream-data', json);
-      } catch (e) {}
-    }
-    event.sender.send('ollama-generate-stream-end');
-  } catch (error) {
-    console.error('[Main Process] Streaming Error:', error);
-    event.sender.send('ollama-generate-stream-error', { error: error.message });
+    event.sender.send('llm-generate-stream-end');
+  } catch (err) {
+    error('[Main Process] LLM streaming error:', err);
+    event.sender.send('llm-generate-stream-error', { error: err.message, errorType: 'STREAM_ERROR' });
   }
 });
+
+// Add IPC handler for aborting LLM generation
+ipcMain.handle('llm-abort-generation', async () => {
+  if (!llmInitialized || !llmBridge) {
+    return { success: false, error: 'LLM not initialized' };
+  }
+
+  const aborted = llmBridge.abortGeneration();
+  return { success: true, aborted };
+});
+
+// Check model status helper function
+async function checkModelStatus() {
+    info('[Main] checkModelStatus called');
+    if (!llmInitialized || !llmBridge) {
+        info('[Main] LLM not initialized');
+        return { status: 'checking' };
+    }
+
+    try {
+        const { existsSync, statSync } = await import('fs');
+        const { join } = await import('path');
+        const model = llmBridge.config.getTargetModel();
+        const modelPath = join(app.getPath('userData'), 'models', 'qwen3', 'main', model.filename);
+
+        info('[Main] Checking model at:', modelPath);
+
+        if (existsSync(modelPath)) {
+            const stats = statSync(modelPath);
+            info('[Main] Model file exists, size:', stats.size, 'expected:', model.expectedSize);
+
+            // Check if it's a complete, valid download
+            if (stats.size === model.expectedSize) {
+                info('[Main] Model is complete and valid');
+                return {
+                    status: 'ready',
+                    model: model,
+                    modelPath: modelPath
+                };
+            }
+        }
+
+        // Check for partial download
+        const partialPath = modelPath + '.partial';
+        if (existsSync(partialPath)) {
+            const stats = statSync(partialPath);
+            info('[Main] Partial download found, size:', stats.size);
+
+            // Auto-resume download
+            info('[Main] Auto-resuming download');
+            startDownload();
+
+            return {
+                status: 'downloading',
+                model: model,
+                isResuming: true,
+                downloaded: stats.size,
+                total: model.expectedSize,
+                percent: (stats.size / model.expectedSize) * 100
+            };
+        } else {
+            info('[Main] No model or partial file found');
+            return { status: 'ready_to_download' };
+        }
+    } catch (err) {
+        error('[Main] Error checking model status:', err);
+        return { status: 'error', error: err.message };
+    }
+}
+
+// IPC handler for checking model status (both on and handle)
+ipcMain.on('check-model-status', async () => {
+    info('[Main] check-model-status (on) handler called');
+    const status = await checkModelStatus();
+    if (mainWindow) {
+        mainWindow.webContents.send('model-status', status);
+    }
+});
+
+ipcMain.handle('check-model-status', async () => {
+    info('[Main] check-model-status (handle) handler called');
+    return await checkModelStatus();
+});
+
+// IPC handler for retrying download
+ipcMain.on('retry-model-download', () => {
+    startDownload();
+});
+
+// IPC handler for opening model folder
+ipcMain.on('open-model-folder', async () => {
+    try {
+        const modelDir = path.join(app.getPath('userData'), 'models', 'qwen3', 'main');
+        await shell.openPath(modelDir);
+    } catch (err) {
+        error('[Main] Failed to open model folder:', err);
+    }
+});
+
+// IPC handler for getting model path
+ipcMain.handle('get-model-path', () => {
+    if (!llmInitialized || !llmBridge) {
+        return null;
+    }
+    return llmBridge.config.getModelDir();
+});
+
+// Start download process
+function startDownload() {
+    info('[Main] startDownload() called');
+    if (!llmInitialized || !llmBridge) {
+        error('[Main] Cannot start download - LLM not initialized');
+        return;
+    }
+
+    const model = llmBridge.config.getTargetModel();
+    info('[Main] Starting download of model:', model.id);
+
+    // Note: LlamaBridge emits its own events (model-download-started, model-download-progress, model-download-complete)
+    // which get forwarded to the renderer in the initializeLLM() function. We don't need to send duplicate events here.
+    llmBridge.downloadModel('qwen3:1.7b', (progress) => {
+        // Progress is already being forwarded via LlamaBridge events
+        // This callback is just for logging if needed
+    }).then(result => {
+        info('[Main] Model download result:', result);
+
+        if (result.success) {
+            info('[Main] Model download completed successfully, path:', result.path);
+
+            // Re-check model status after a delay to ensure renderer has processed completion
+            // Also send the ready status directly with the model path to avoid race conditions
+            info('[Main] Re-checking model status after download (with delay)');
+            setTimeout(() => {
+                const model = llmBridge.config.getTargetModel();
+                const modelPath = path.join(app.getPath('userData'), 'models', 'qwen3', 'main', model.filename);
+                info('[Main] Sending ready status with modelPath:', modelPath);
+                if (mainWindow) {
+                    mainWindow.webContents.send('model-status', {
+                        status: 'ready',
+                        modelPath: modelPath,
+                        model: model
+                    });
+                }
+            }, 200);
+        }
+    }).catch(err => {
+        error('[Main] Model download failed:', err);
+    });
+}
 
 // Add IPC handlers for settings management
 ipcMain.handle('settings-get', (event, key) => {
   if (!store) {
-    console.error('Store not initialized');
+    warn('Store not initialized');
     return null;
   }
   if (key) {
@@ -199,7 +362,7 @@ ipcMain.handle('settings-get', (event, key) => {
 
 ipcMain.handle('settings-set', (event, key, value) => {
   if (!store) {
-    console.error('Store not initialized');
+    warn('Store not initialized');
     return false;
   }
   store.set(key, value);
@@ -208,11 +371,11 @@ ipcMain.handle('settings-set', (event, key, value) => {
 
 ipcMain.handle('settings-get-all', () => {
   if (!store) {
-    console.error('Store not initialized');
-    return { ollamaModel: 'gemma3n:e4b', enableLLM: true, fullscreen: false, windowPreset: 'Default' };
+    warn('Store not initialized');
+    return { llmModel: 'phi3:mini', enableLLM: true, fullscreen: false, windowPreset: 'Default' };
   }
   return {
-    ollamaModel: store.get('ollamaModel'),
+    llmModel: store.get('llmModel'),
     enableLLM: store.get('enableLLM'),
     fullscreen: store.get('fullscreen'),
     windowPreset: store.get('windowPreset')
@@ -221,7 +384,7 @@ ipcMain.handle('settings-get-all', () => {
 
 ipcMain.handle('settings-clear', () => {
   if (!store) {
-    console.error('Store not initialized');
+    warn('Store not initialized');
     return false;
   }
   store.clear();
@@ -233,10 +396,10 @@ ipcMain.handle('window-set-fullscreen', (event, value) => {
   if (!mainWindow) return false;
   try {
     mainWindow.setFullScreen(!!value);
-    if (store) store.set('fullscreen', !!value);
+    if (store)     store.set('fullscreen', !!value);
     return true;
   } catch (e) {
-    console.error('Failed to set fullscreen:', e);
+    error('Failed to set fullscreen:', e);
     return false;
   }
 });
@@ -271,83 +434,121 @@ ipcMain.handle('window-apply-preset', (event, presetName) => {
   return true;
 });
 
-// Add IPC handler for testing Ollama connection
-ipcMain.handle('ollama-test-connection', async (event, { model }) => {
+// Add IPC handler for testing LLM connection
+ipcMain.handle('llm-test-connection', async (event, { model }) => {
   try {
-    // Test basic connection to Ollama service
-    let response;
-    try {
-      response = await fetch('http://127.0.0.1:11434/api/version', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } catch (fetchError) {
+    if (!llmInitialized || !llmBridge) {
       return { 
         success: false, 
-        error: 'Cannot connect to Ollama service. Please ensure Ollama is running on port 11434.',
-        errorType: 'CONNECTION_ERROR'
+        error: 'LLM not initialized',
+        errorType: 'NOT_INITIALIZED'
       };
     }
-
-    if (!response.ok) {
-      return { 
-        success: false, 
-        error: `Ollama service responded with status ${response.status}`,
-        errorType: 'SERVICE_ERROR'
-      };
-    }
-
-    // Test the specific model with a minimal prompt
-    try {
-      const testResponse = await fetch('http://127.0.0.1:11434/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          model, 
-          prompt: 'Test', 
-          stream: false 
-        }),
-      });
-
-      if (!testResponse.ok) {
-        if (testResponse.status === 404) {
-          return { 
-            success: false, 
-            error: `Model '${model}' not found. Run: ollama pull ${model}`,
-            errorType: 'MODEL_NOT_FOUND'
-          };
-        }
-        return { 
-          success: false, 
-          error: `Model test failed with status ${testResponse.status}`,
-          errorType: 'MODEL_ERROR'
-        };
-      }
-
-      return { 
-        success: true, 
-        message: `✓ Successfully connected to Ollama and validated model '${model}'`
-      };
-    } catch (modelError) {
-      return { 
-        success: false, 
-        error: `Model test failed: ${modelError.message}`,
-        errorType: 'MODEL_ERROR'
-      };
-    }
-
+    
+    const result = await llmBridge.testConnection(model);
+    return result;
   } catch (error) {
     return { 
       success: false, 
-      error: `Connection test failed: ${error.message}`,
-      errorType: 'UNKNOWN_ERROR'
+      error: error.message,
+      errorType: 'TEST_ERROR'
     };
+  }
+});
+
+// IPC handlers for LLM model management
+
+ipcMain.handle('llm-get-available-models', async () => {
+  if (!llmInitialized || !llmBridge) {
+    return { success: false, error: 'LLM not initialized' };
+  }
+  try {
+    const models = await llmBridge.getAvailableModels();
+    return { success: true, models };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('llm-get-downloaded-models', async () => {
+  if (!llmInitialized || !llmBridge) {
+    return { success: false, error: 'LLM not initialized' };
+  }
+  try {
+    const models = await llmBridge.getModels();
+    return { success: true, models };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('llm-download-model', async (event, { model }) => {
+  if (!llmInitialized || !llmBridge) {
+    return { success: false, error: 'LLM not initialized' };
+  }
+  
+  try {
+    const onProgress = (progress) => {
+      event.sender.send('llm-model-download-progress', progress);
+    };
+    
+    const result = await llmBridge.downloadModel(model, onProgress);
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('llm-delete-model', async (event, { model }) => {
+  if (!llmInitialized || !llmBridge) {
+    return { success: false, error: 'LLM not initialized' };
+  }
+  
+  try {
+    const result = await llmBridge.deleteModel(model);
+    return result;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('llm-get-config', async () => {
+  if (!llmInitialized || !llmBridge) {
+    return { success: false, error: 'LLM not initialized' };
+  }
+  try {
+    const config = await llmBridge.getConfig();
+    return { success: true, config };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('llm-set-model', async (event, { model }) => {
+  if (!llmInitialized || !llmBridge) {
+    return { success: false, error: 'LLM not initialized' };
+  }
+  try {
+    const validation = llmBridge.setModel(model);
+    return { success: validation.valid, ...validation };
+  } catch (error) {
+    return { success: false, error: error.message };
   }
 });
 
 app.whenReady().then(async () => {
     await initializeStore();
     createWindow();
+
+    // Initialize llama.cpp system
+    const llmResult = await initializeLLM();
+    info('LLM initialization result:', llmResult);
+
+    // Notify renderer about LLM initialization status
+    if (mainWindow) {
+      mainWindow.webContents.send('llm-initialized', llmResult);
+    }
+
     // Minimal production menu: disable default DevTools shortcuts when packaged
     if (app.isPackaged) {
       const template = [
@@ -369,7 +570,17 @@ app.whenReady().then(async () => {
     }
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+  // Shut down llama.cpp when closing
+  if (llmInitialized && llmBridge) {
+    try {
+      await llmBridge.shutdown();
+      info('LLM system shut down');
+    } catch (err) {
+      error('Error shutting down LLM:', err);
+    }
+  }
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }

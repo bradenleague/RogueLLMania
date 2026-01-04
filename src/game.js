@@ -26,6 +26,31 @@ export let MAP_WIDTH = 40;
 export let MAP_HEIGHT = 20;
 
 /**
+ * Start the game (called from start screen)
+ */
+export async function startGame() {
+    // Check if already initialized
+    if (display) {
+        logger.info('Game already initialized, skipping');
+        return;
+    }
+
+    // Hide start screen
+    const startScreen = document.getElementById('startScreen');
+    if (startScreen) {
+        startScreen.style.display = 'none';
+    }
+
+    // Show game container
+    const gameContainer = document.getElementById('gameContainer');
+    if (gameContainer) {
+        gameContainer.style.display = 'inline-block';
+    }
+
+    await init();
+}
+
+/**
  * Initialize the game
  */
 async function init() {
@@ -483,6 +508,7 @@ if (typeof window !== 'undefined') {
         loadLevel,
         draw,
         restartGame,
+        startGame,
         get currentLevel() { return currentLevelNumber; },
         get player() { return player; },
         get world() { return world; },
@@ -494,7 +520,4 @@ if (typeof window !== 'undefined') {
 // Export game over state for external access
 export function isGameOver() {
     return gameOver;
-}
-
-// Initialize the game when the window loads
-window.addEventListener('load', init); 
+} 

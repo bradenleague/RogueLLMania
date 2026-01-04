@@ -3,6 +3,7 @@ import { initializeHUD } from './hud.js';
 import { initializeInventoryUI } from './overlays/inventory.js';
 import { initializeLevelIntroductionUI } from './overlays/levelIntro.js';
 import { initializeSettingsUI } from './overlays/settings.js';
+import { initializeFTUE } from './overlays/ftue.js';
 
 export function initializeUI({ turnEngine } = {}) {
   // Wire input locking to overlay lifecycle
@@ -18,6 +19,7 @@ export function initializeUI({ turnEngine } = {}) {
   initializeInventoryUI();
   initializeLevelIntroductionUI();
   initializeSettingsUI();
+  initializeFTUE();
 }
 
 

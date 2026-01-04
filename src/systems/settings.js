@@ -3,24 +3,24 @@
 const { ipcRenderer } = window.require('electron');
 
 /**
- * Get the current ollama model setting
- * @returns {Promise<string>} The ollama model name
+ * Get current LLM model setting
+ * @returns {Promise<string>} The LLM model name
  */
-export async function getOllamaModel() {
-    return await ipcRenderer.invoke('settings-get', 'ollamaModel');
+export async function getLLMModel() {
+    return await ipcRenderer.invoke('settings-get', 'llmModel');
 }
 
 /**
- * Set the ollama model setting
- * @param {string} model The ollama model name
+ * Set LLM model setting
+ * @param {string} model The LLM model name
  * @returns {Promise<boolean>} Success status
  */
-export async function setOllamaModel(model) {
-    return await ipcRenderer.invoke('settings-set', 'ollamaModel', model);
+export async function setLLMModel(model) {
+    return await ipcRenderer.invoke('settings-set', 'llmModel', model);
 }
 
 /**
- * Get the LLM enable/disable setting
+ * Get LLM enable/disable setting
  * @returns {Promise<boolean>} Whether LLM is enabled
  */
 export async function isLLMEnabled() {
@@ -28,7 +28,7 @@ export async function isLLMEnabled() {
 }
 
 /**
- * Set the LLM enable/disable setting
+ * Set LLM enable/disable setting
  * @param {boolean} enabled Whether LLM should be enabled
  * @returns {Promise<boolean>} Success status
  */

@@ -1,7 +1,10 @@
-import { getAllSettings, setOllamaModel, setLLMEnabled, getFullscreen, setFullscreen, applyWindowPreset } from '../../systems/settings.js';
+import { getAllSettings, setLLMModel, setLLMEnabled, getFullscreen, setFullscreen, applyWindowPreset } from '../../systems/settings.js';
 import { register, open as openOverlay, close as closeOverlay, isOpen as isOverlayOpen } from '../overlayManager.js';
 
 let overlayRootEl = null;
+let downloadedModels = [];
+let availableModels = [];
+let currentDownloadProgress = null;
 
 export function initializeSettingsUI() {
   register('settings', async (root) => {
@@ -37,6 +40,13 @@ export async function toggleSettings() {
 
 async function updateSettingsDisplay(root) {
   const settings = await getAllSettings();
+
+  // Fetch model information
+  await fetchModelInfo();
+
+  const model = availableModels[0] || { name: 'Qwen3-1.7B-Instruct', size: '1.19GB' };
+  const isDownloaded = downloadedModels.length > 0;
+
   if (!root) return;
   root.innerHTML = `
     <div class="settings-header">
@@ -44,9 +54,26 @@ async function updateSettingsDisplay(root) {
       <div class="settings-sub">Configure game options</div>
     </div>
     <div class="settings-field">
-      <label class="settings-label">Ollama Model:</label>
-      <input type="text" id="ollamaModelInput" class="settings-input" value="${settings.ollamaModel}" placeholder="e.g., gemma3n:e4b" />
-      <div class="settings-help">The Ollama model to use for text generation</div>
+      <label class="settings-label">AI Model:</label>
+      <div class="settings-model-status">
+        <span class="model-name">${model.name}</span>
+        <span class="model-info">(${model.size})</span>
+      </div>
+      <div class="model-status-indicator ${isDownloaded ? 'installed' : 'not-installed'}">
+        ${isDownloaded ? '✓ Installed' : '⚠ Not Installed'}
+      </div>
+      ${isDownloaded ? '' : `
+        <button id="downloadModelButton" class="btn btn-small btn-primary">Download Model (1.19GB)</button>
+      `}
+      ${isDownloaded ? `
+        <button id="deleteModelButton" class="btn btn-small btn-danger">Delete Model</button>
+      ` : ''}
+    </div>
+    <div class="settings-field" id="downloadProgressField" style="display: none;">
+      <div class="download-progress">
+        <div class="download-progress-bar"></div>
+        <div class="download-progress-text"></div>
+      </div>
     </div>
     <div class="settings-field">
       <label class="settings-checkbox-label">
@@ -77,7 +104,7 @@ async function updateSettingsDisplay(root) {
       <div class="settings-help">Applied immediately</div>
     </div>
     <div class="settings-actions">
-      <button id="testConnectionButton" class="btn">TEST CONNECTION</button>
+      <button id="testConnectionButton" class="btn" ${!isDownloaded ? 'disabled' : ''}>TEST CONNECTION</button>
       <button id="saveSettingsButton" class="btn btn-primary">SAVE</button>
       <button id="cancelSettingsButton" class="btn btn-danger">CANCEL</button>
     </div>
@@ -86,6 +113,9 @@ async function updateSettingsDisplay(root) {
   root.querySelector('#testConnectionButton').addEventListener('click', () => testConnection(root));
   root.querySelector('#saveSettingsButton').addEventListener('click', () => saveSettings(root));
   root.querySelector('#cancelSettingsButton').addEventListener('click', closeSettings);
+
+  root.querySelector('#downloadModelButton')?.addEventListener('click', () => downloadModel(root));
+  root.querySelector('#deleteModelButton')?.addEventListener('click', () => deleteModel(root));
 
   const fullscreenCheckbox = root.querySelector('#fullscreenCheckbox');
   fullscreenCheckbox?.addEventListener('change', async (e) => {
@@ -99,15 +129,34 @@ async function updateSettingsDisplay(root) {
   });
 }
 
+async function fetchModelInfo() {
+  try {
+    const { ipcRenderer } = window.require ? window.require('electron') : { ipcRenderer: null };
+    if (!ipcRenderer) return;
+    
+    const [availableResult, downloadedResult] = await Promise.all([
+      ipcRenderer.invoke('llm-get-available-models'),
+      ipcRenderer.invoke('llm-get-downloaded-models')
+    ]);
+    
+    if (availableResult.success) {
+      availableModels = availableResult.models || [];
+    }
+    
+    if (downloadedResult.success) {
+      downloadedModels = downloadedResult.models || [];
+    }
+  } catch (error) {
+    console.error('Error fetching model info:', error);
+  }
+}
+
 async function saveSettings(root) {
-  const modelInput = root.querySelector('#ollamaModelInput');
   const enableLLMCheckbox = root.querySelector('#enableLLMCheckbox');
   const fullscreenCheckbox = root.querySelector('#fullscreenCheckbox');
-  if (!modelInput || enableLLMCheckbox == null) return;
+  if (enableLLMCheckbox == null) return;
   try {
-    const newModel = modelInput.value.trim();
     const newLLMEnabled = enableLLMCheckbox.checked;
-    if (newModel) await setOllamaModel(newModel);
     await setLLMEnabled(newLLMEnabled);
     if (fullscreenCheckbox) await setFullscreen(fullscreenCheckbox.checked);
     showSettingsSaved(root);
@@ -127,23 +176,19 @@ function showSettingsSaved(root) {
 }
 
 async function testConnection(root) {
-  const modelInput = root.querySelector('#ollamaModelInput');
   const enableLLMCheckbox = root.querySelector('#enableLLMCheckbox');
   const testButton = root.querySelector('#testConnectionButton');
-  if (!modelInput || !enableLLMCheckbox) return;
+  if (!enableLLMCheckbox) return;
   testButton.innerHTML = 'TESTING...';
   testButton.disabled = true;
   try {
-    const newModel = modelInput.value.trim();
     const newLLMEnabled = enableLLMCheckbox.checked;
-    if (newModel) await setOllamaModel(newModel);
     await setLLMEnabled(newLLMEnabled);
     const { ipcRenderer } = window.require ? window.require('electron') : { ipcRenderer: null };
     if (!ipcRenderer) {
       showTestResult(root, 'Electron IPC not available in this environment.', 'error');
     } else {
-      const model = newModel || 'gemma3n:e4b';
-      const result = await ipcRenderer.invoke('ollama-test-connection', { model });
+      const result = await ipcRenderer.invoke('llm-test-connection', { model: 'qwen3:1.7b' });
       if (result.success) showTestResult(root, `${result.message}\n\n✓ Settings have been saved.`, 'success');
       else showTestResult(root, `${result.error}\n\n⚠️ Settings were saved, but connection test failed.`, 'error');
     }
@@ -170,8 +215,89 @@ function showTestResult(root, message, type) {
   });
 }
 
+async function downloadModel(root) {
+  const downloadButton = root.querySelector('#downloadModelButton');
+  const progressField = root.querySelector('#downloadProgressField');
+
+  downloadButton.disabled = true;
+  downloadButton.textContent = 'Downloading...';
+  progressField.style.display = 'block';
+
+  try {
+    const { ipcRenderer } = window.require ? window.require('electron') : { ipcRenderer: null };
+    if (!ipcRenderer) throw new Error('IPC not available');
+
+    const progressListener = (event, progress) => {
+      updateDownloadProgress(root, progress);
+    };
+
+    ipcRenderer.on('model-download-progress', progressListener);
+
+    const result = await ipcRenderer.invoke('llm-download-model', { model: 'qwen3:1.7b' });
+
+    ipcRenderer.removeListener('model-download-progress', progressListener);
+
+    if (result.success) {
+      await fetchModelInfo();
+      alert('Qwen3 model downloaded successfully!');
+      await updateSettingsDisplay(root);
+    } else {
+      throw new Error(result.error || 'Download failed');
+    }
+  } catch (error) {
+    console.error('Download error:', error);
+    alert(`Failed to download model: ${error.message}`);
+  } finally {
+    downloadButton.disabled = false;
+    downloadButton.textContent = 'Download Model (1.19GB)';
+    progressField.style.display = 'none';
+  }
+}
+
+function updateDownloadProgress(root, progress) {
+  const progressField = root.querySelector('#downloadProgressField');
+  if (!progressField) return;
+  
+  const progressBar = progressField.querySelector('.download-progress-bar');
+  const progressText = progressField.querySelector('.download-progress-text');
+  
+  if (progressBar) {
+    progressBar.style.width = `${progress.percent || 0}%`;
+  }
+  
+  if (progressText) {
+    progressText.textContent = `${progress.percent || 0}% downloaded`;
+    if (progress.status) {
+      progressText.textContent += ` - ${progress.status}`;
+    }
+  }
+}
+
+async function deleteModel(root) {
+  if (!confirm('Are you sure you want to delete the Qwen3 model? This will require redownloading ~1.19GB.')) {
+    return;
+  }
+
+  try {
+    const { ipcRenderer } = window.require ? window.require('electron') : { ipcRenderer: null };
+    if (!ipcRenderer) throw new Error('IPC not available');
+
+    const result = await ipcRenderer.invoke('llm-delete-model', { model: 'qwen3:1.7b' });
+
+    if (result.success) {
+      await fetchModelInfo();
+      alert('Qwen3 model deleted successfully!');
+      await updateSettingsDisplay(root);
+    } else {
+      throw new Error(result.error || 'Delete failed');
+    }
+  } catch (error) {
+    console.error('Delete error:', error);
+    alert(`Failed to delete model: ${error.message}`);
+  }
+}
+
 export function isSettingsDisplayOpen() {
   return isOverlayOpen('settings');
 }
-
 

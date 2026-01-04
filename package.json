@@ -1,8 +1,9 @@
 {
   "name": "roguellmania",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "RogueLLMania – a minimal roguelike built with Electron and rot.js",
   "main": "src/main.js",
+  "type": "module",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
@@ -13,7 +14,12 @@
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder -mwl",
-    "clean": "rm -rf dist/*"
+    "clean": "rm -rf dist/*",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "benchmark": "node tests/llm/runRealBenchmark.js"
   },
   "keywords": [
     "roguelike",
@@ -24,12 +30,15 @@
   "author": "Braden League",
   "license": "MIT",
   "devDependencies": {
+    "@vitest/ui": "^4.0.16",
     "electron": "^28.0.0",
     "electron-builder": "^26.0.12",
-    "png-to-ico": "^2.1.8"
+    "png-to-ico": "^2.1.8",
+    "vitest": "^4.0.16"
   },
   "dependencies": {
     "electron-store": "^10.1.0",
+    "node-llama-cpp": "^3.14.5",
     "rot-js": "^2.2.0"
   },
   "build": {
@@ -42,8 +51,10 @@
     "files": [
       "public/**/*",
       "src/**/*",
-      "node_modules/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "**/node_modules/node-llama-cpp/**"
     ],
     "mac": {
       "target": [

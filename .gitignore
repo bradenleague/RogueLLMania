@@ -29,3 +29,18 @@ Thumbs.db
 # Package lock files (optional, if you don't want to commit them)
 # package-lock.json
 yarn.lock
+
+# Test coverage
+coverage/
+
+# Test results
+tests/results/
+tests/benchmarks/benchmark-results.json
+
+CLAUDE.md
+AGENTS.md
+**/CLAUDE.md
+**/AGENTS.md
+
+# Documentation
+docs/
