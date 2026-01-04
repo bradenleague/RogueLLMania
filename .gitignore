@@ -36,3 +36,8 @@ coverage/
 # Test results
 tests/results/
 tests/benchmarks/benchmark-results.json
+
+CLAUDE.md
+AGENTS.md
+**/CLAUDE.md
+**/AGENTS.md
