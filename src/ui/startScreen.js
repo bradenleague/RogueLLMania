@@ -44,39 +44,27 @@ function startModelCheck() {
 }
 
 function setupEventListeners() {
-  console.log('[StartScreen] Setting up event listeners...');
 
   // Wait for LLM to be initialized before checking model status
   ipcRenderer.on('llm-initialized', () => {
-    console.log('[StartScreen] llm-initialized event received');
     startModelCheck();
   });
 
   ipcRenderer.on('model-status', (event, data) => {
-    console.log('[StartScreen] Model status received:', data);
-    console.log('[StartScreen] Current state before handling model-status:', appState.getState());
-    console.log('[StartScreen] isDownloading flag:', isDownloading);
-
     // Ignore ready_to_download if we're actively downloading
     if (data.status === 'ready_to_download' && isDownloading) {
-      console.log('[StartScreen] Ignoring ready_to_download while downloading');
       return;
     }
 
     if (data.status === 'checking') {
-      console.log('[StartScreen] Setting CHECKING_MODEL state');
       appState.setState(STATES.CHECKING_MODEL);
     } else if (data.status === 'downloading') {
-      console.log('[StartScreen] Setting DOWNLOADING state');
       isDownloading = true;
       appState.setState(STATES.DOWNLOADING, data);
     } else if (data.status === 'ready') {
-      console.log('[StartScreen] Setting READY state with modelPath:', data.modelPath);
       isDownloading = false;
       appState.setState(STATES.READY, { modelPath: data.modelPath });
-      console.log('[StartScreen] State after setting READY:', appState.getState());
     } else if (data.status === 'ready_to_download') {
-      console.log('[StartScreen] Setting NEEDS_DOWNLOAD state');
       isDownloading = false;
       appState.setState(STATES.NEEDS_DOWNLOAD);
     }
@@ -84,15 +72,12 @@ function setupEventListeners() {
 
   // Listen for download started - both event naming conventions
   const handleDownloadStarted = (event, data) => {
-    console.log('[StartScreen] Download started event received:', data);
     stopFakeProgress();
     appState.setState(STATES.DOWNLOADING, data);
   };
 
   ipcRenderer.on('llm-model-download-started', handleDownloadStarted);
-  console.log('[StartScreen] Registered listener for llm-model-download-started');
   ipcRenderer.on('model-download-started', handleDownloadStarted);
-  console.log('[StartScreen] Registered listener for model-download-started');
 
   let lastProgressUpdate = 0;
   // Handle download progress - both event naming conventions

@@ -32,7 +32,6 @@ async function getFinalUrl(url, maxRedirects = 5) {
       if ([301, 302, 303, 307, 308].includes(response.status) && response.location) {
         redirectCount++;
         currentUrl = response.location;
-        console.log(`[ModelDownloader] Redirect ${response.status} -> ${currentUrl}`);
       } else {
         return currentUrl;
       }
@@ -99,19 +98,14 @@ function parseExpectedTotal(statusCode, headers) {
   const contentLength = headers['content-length'];
   const contentRange = headers['content-range'];
 
-  console.log(`[ModelDownloader] parseExpectedTotal - statusCode: ${statusCode}, content-length: ${contentLength}, content-range: ${contentRange}`);
-
   if (statusCode === 200) {
     if (contentLength) {
       const parsed = parseInt(contentLength, 10);
-      console.log(`[ModelDownloader] Parsed Content-Length: ${parsed} bytes`);
       return {
         start: 0,
         end: parsed - 1,
         total: parsed
       };
-    } else {
-      console.log(`[ModelDownloader] No Content-Length header for 200 response`);
     }
   }
 
@@ -124,15 +118,11 @@ function parseExpectedTotal(statusCode, headers) {
           end: parseInt(match[2], 10),
           total: parseInt(match[3], 10)
         };
-        console.log(`[ModelDownloader] Parsed Content-Range: start=${result.start}, end=${result.end}, total=${result.total}`);
         return result;
       }
-    } else {
-      console.log(`[ModelDownloader] No Content-Range header for 206 response`);
     }
   }
 
-  console.log(`[ModelDownloader] Unable to parse total size from headers`);
   return null;
 }
 
@@ -157,7 +147,6 @@ export class ModelDownloader {
     const modelKey = model.id || model.filename;
 
     if (inFlightDownloads.has(modelKey)) {
-      console.log(`[ModelDownloader] Download already in progress for ${modelKey}, reusing existing promise`);
       return inFlightDownloads.get(modelKey);
     }
 
@@ -176,23 +165,11 @@ export class ModelDownloader {
     const targetPath = join(this.modelDir, model.filename);
     const partialPath = targetPath + '.partial';
 
-    console.log('[ModelDownloader] ===== DOWNLOAD DEBUG INFO =====');
-    console.log('[ModelDownloader] Model ID:', model.id);
-    console.log('[ModelDownloader] Model name:', model.name);
-    console.log('[ModelDownloader] Expected filename:', model.filename);
-    console.log('[ModelDownloader] Expected size:', model.expectedSize, 'bytes');
-    console.log('[ModelDownloader] Expected SHA256:', model.sha256);
-    console.log('[ModelDownloader] Source URL:', model.url);
-    console.log('[ModelDownloader] Target path:', targetPath);
-    console.log('[ModelDownloader] Partial path:', partialPath);
-    console.log('[ModelDownloader] ==============================');
-
     if (existsSync(targetPath)) {
       const stats = statSync(targetPath);
       if (stats.size === model.expectedSize) {
         const validation = await this.validateModel(targetPath, model, null);
         if (validation.valid) {
-          console.log('[ModelDownloader] Model already downloaded and validated');
           return {
             success: true,
             message: 'Model already downloaded and validated',
@@ -200,11 +177,9 @@ export class ModelDownloader {
             size: stats.size
           };
         } else {
-          console.log('[ModelDownloader] Existing model invalid (checksum mismatch), re-downloading');
           unlinkSync(targetPath);
         }
       } else {
-        console.log('[ModelDownloader] Existing model size mismatch, re-downloading');
         unlinkSync(targetPath);
       }
     }
