@@ -17,11 +17,16 @@ tests/
 │   ├── benchmark.js             # Benchmark runner and tracking
 │   ├── levelIntroduction.test.js # Level intro quality tests
 │   ├── artifactDescription.test.js # Artifact description tests
-│   └── runBenchmark.js          # Example benchmark execution
+│   └── runRealBenchmark.js      # Real LLM benchmark runner (production code)
+├── cases/
+│   ├── levelIntros.js           # Level introduction test cases
+│   └── artifacts.js             # Artifact description test cases
 ├── fixtures/
 │   └── goldenOutputs.js         # High-quality reference examples
-└── benchmarks/
-    └── benchmark-results.json   # Historical benchmark data
+├── benchmarks/
+│   └── benchmark-results.json   # Historical benchmark data (gitignored)
+└── results/                     # Real benchmark results (gitignored)
+    └── real-*.json
 ```
 
 ## 🚀 Quick Start
@@ -45,7 +50,7 @@ npm run test:watch
 ### Running Benchmarks
 
 ```bash
-# Run benchmarks to track quality over time
+# Run benchmarks against actual LLM model (requires model download)
 npm run benchmark
 ```
 
@@ -54,8 +59,9 @@ npm run benchmark
 The framework evaluates LLM outputs on several dimensions:
 
 ### 1. **Length Requirements**
-- **Level Introductions**: 20-100 words (2-3 sentences)
-- **Artifact Descriptions**: 20-80 words (1-2 sentences, flexible based on content)
+- **Level Introductions**: Target 30-40 words (assembled from 3 slots: room 8-14w, threat 6-12w, oddity 8-14w)
+- **Artifact Descriptions**: Target 20-36 words (assembled from 2 slots: placement + effect)
+- Test cases use ranges: 15-50 words for level intros, 20-75 words for artifacts (to catch outliers)
 
 ### 2. **Clean Output**
 - No XML/HTML tags in final text
@@ -90,8 +96,8 @@ const intro = "You step into a verdant chamber where soft grass somehow thrives.
 
 // Evaluate quality
 const quality = QualityMetrics.evaluateOverallQuality(intro, {
-  minWords: 20,
-  maxWords: 100,
+  minWords: 15,
+  maxWords: 50,
   expectedElements: ['grass', 'chamber']
 });
 
@@ -111,8 +117,8 @@ await runner.runBenchmark('Level 1 Intro', async () => {
   // Your LLM generation code here
   return await generateLevelIntroduction(...);
 }, {
-  minWords: 20,
-  maxWords: 100
+  minWords: 15,
+  maxWords: 50
 });
 
 // Set as baseline
@@ -161,15 +167,14 @@ npm run benchmark
 # Sets first run as baseline
 
 # 2. Make prompt improvements
-# Edit prompts in src/systems/levelIntroduction.js or src/entities/storyObject.js
+# Edit prompts in src/main/llm/ConfigManager.js (getSystemPrompts method)
 
 # 3. Run benchmark again
 npm run benchmark
 # Compares to baseline, shows improvements
 
 # 4. If quality improved significantly
-node -e "import('./tests/llm/runBenchmark.js').then(m => m.runner.setBaseline())"
-# Sets new baseline
+# Edit runRealBenchmark.js to set a new baseline, or use the benchmark.js API directly
 ```
 
 ## 🛠️ Customization
@@ -204,7 +209,7 @@ import { createBenchmarkSuite } from './tests/llm/benchmark.js';
 const customSuite = createBenchmarkSuite('My Custom Tests', [
   {
     name: 'Test Name',
-    context: { minWords: 20, maxWords: 100 },
+    context: { minWords: 15, maxWords: 50 },
     fn: async () => {
       // Your test logic
       return generatedText;
@@ -237,16 +242,19 @@ await customSuite.run(runner);
 ### Common Issues
 
 **"Output contains XML tags"**
-- Check sanitization functions in `levelIntroduction.js` and `storyObject.js`
+- Check assembly functions in `src/main/llm/schemas.js` (`assembleLevelIntro`, `assembleArtifact`)
 - Ensure tags are stripped before displaying to user
+- Note: System now uses JSON schema output, not XML
 
 **"Text too short/long"**
 - Adjust prompt instructions for desired length
 - Check token limits in LLM generation
 
 **"Missing context elements"**
-- Verify XML payload includes all required context
+- Verify context payload includes all required elements (JSON schema input)
 - Check that prompt instructs model to use all elements
+- For level intros: ensure room, threat, and oddity slots are populated
+- For artifacts: ensure placement and effect slots are populated
 
 **"Too generic/clichéd"**
 - Add more specific constraints to prompt
@@ -258,28 +266,38 @@ await customSuite.run(runner);
 To integrate benchmarks with actual LLM inference:
 
 ```javascript
-// Replace MockLLMGenerator with real calls
-import { generateDescription } from '../src/llm.js';
+// Use generateJson with JSON schemas (recommended)
+import { generateJson, JsonSchemas, assembleArtifact } from '../src/llm.js';
 
 const artifactSuite = createBenchmarkSuite('Real Artifacts', [
   {
     name: 'Real Generation Test',
-    context: { minWords: 35, maxWords: 70 },
+    context: { minWords: 20, maxWords: 36 },
     fn: async () => {
-      // Use actual LLM
-      const result = await generateDescription(prompt);
-      return extractDescription(result);
+      // Use actual LLM with JSON schema
+      const slots = await generateJson(prompt, JsonSchemas.artifact, { mode: 'artifact' });
+      return assembleArtifact(slots);
     }
   }
 ]);
 ```
 
+**Note**: `generateDescription()` exists but is deprecated. Use `generateJson()` with `JsonSchemas` for structured output.
+
 ## 📚 Additional Resources
 
-- **Prompts**: `src/systems/levelIntroduction.js` (STATIC_PROMPT)
-- **Prompts**: `src/entities/storyObject.js` (STATIC_PROMPT)
+- **Prompts**: `src/main/llm/ConfigManager.js` (`getSystemPrompts()` method)
+  - System prompts moved here for session-level efficiency (reduces token overhead)
+  - Level intro prompt: `ConfigManager.getSystemPrompts().levelIntro`
+  - Artifact prompt: `ConfigManager.getSystemPrompts().artifact`
+- **Schemas & Assembly**: `src/main/llm/schemas.js`
+  - `JsonSchemas.levelIntro` - JSON schema for level introductions
+  - `JsonSchemas.artifact` - JSON schema for artifacts
+  - `assembleLevelIntro(slots)` - Assembles room/threat/oddity slots
+  - `assembleArtifact(slots)` - Assembles placement/effect slots
 - **LLM Bridge**: `src/main/llm/LlamaBridge.js`
 - **Content**: `src/content/artifacts.js`, `src/content/monsters.js`
+- **Generation Functions**: `src/systems/levelIntroduction.js`, `src/entities/storyObject.js`
 
 ## 🤝 Contributing
 

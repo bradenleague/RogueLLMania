@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { 
   QualityMetrics, 
-  MockLLMGenerator, 
   createMockMap,
   extractDescription 
 } from './testHelpers.js';
@@ -12,9 +11,9 @@ import {
 
 describe('Level Introduction Quality Tests', () => {
   describe('Quality Metrics', () => {
-    it('should validate length requirements', () => {
+    it('should validate length requirements (target: 30-40 words, test range: 15-50)', () => {
       const goodText = "You step into a verdant chamber where soft grass somehow thrives beneath ancient stone. The air shifts with shambling presences, and decay mingles with the earthy scent of growth.";
-      const result = QualityMetrics.meetsLengthRequirement(goodText, 20, 100);
+      const result = QualityMetrics.meetsLengthRequirement(goodText, 15, 50);
       
       expect(result.valid).toBe(true);
       expect(result.wordCount).toBeGreaterThan(20);
@@ -23,7 +22,7 @@ describe('Level Introduction Quality Tests', () => {
 
     it('should reject text that is too short', () => {
       const shortText = BAD_EXAMPLES.tooShort;
-      const result = QualityMetrics.meetsLengthRequirement(shortText, 20, 100);
+      const result = QualityMetrics.meetsLengthRequirement(shortText, 15, 50);
       
       expect(result.valid).toBe(false);
       expect(result.wordCount).toBeLessThan(20);
@@ -67,8 +66,8 @@ describe('Level Introduction Quality Tests', () => {
       GOLDEN_LEVEL_INTRODUCTIONS.forEach(golden => {
         golden.examples.forEach(example => {
           const quality = QualityMetrics.evaluateOverallQuality(example, {
-            minWords: 20,
-            maxWords: 100
+            minWords: 15,
+            maxWords: 50 // Test range (target: 30-40 words)
           });
           
           expect(quality.passed, `Golden example should pass quality check: ${example}`).toBe(true);
@@ -108,41 +107,13 @@ describe('Level Introduction Quality Tests', () => {
     it('should flag all bad examples', () => {
       Object.entries(BAD_EXAMPLES).forEach(([key, badText]) => {
         const quality = QualityMetrics.evaluateOverallQuality(badText, {
-          minWords: 20,
-          maxWords: 100
+          minWords: 15,
+          maxWords: 50 // Test range (target: 30-40 words)
         });
         
         // Bad examples should generally fail (though some might pass on certain metrics)
         expect(quality.overallScore, `Bad example "${key}" should have low quality score`).toBeLessThan(1.0);
       });
-    });
-  });
-
-  describe('Mock Generator', () => {
-    let mockGen;
-
-    beforeEach(() => {
-      mockGen = new MockLLMGenerator();
-    });
-
-    it('should return mock responses', async () => {
-      const response = await mockGen.generate('test prompt');
-      expect(response.text).toBeDefined();
-      expect(response.text.length).toBeGreaterThan(0);
-    });
-
-    it('should use custom mock responses', async () => {
-      mockGen.setMockResponse('custom', { text: '<description>Custom response</description>' });
-      
-      const response = await mockGen.generate('custom prompt');
-      expect(response.text).toContain('Custom response');
-    });
-
-    it('should track call count', async () => {
-      await mockGen.generate('test 1');
-      await mockGen.generate('test 2');
-      
-      expect(mockGen.callCount).toBe(2);
     });
   });
 

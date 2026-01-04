@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   QualityMetrics,
-  MockLLMGenerator,
   createMockTile,
   extractDescription,
   extractTitle
@@ -16,8 +15,8 @@ describe('Artifact Description Quality Tests', () => {
     it('should validate all golden artifact descriptions meet quality standards', () => {
       GOLDEN_ARTIFACT_DESCRIPTIONS.forEach(golden => {
         const quality = QualityMetrics.evaluateOverallQuality(golden.example, {
-          minWords: 20, // Adjusted to match actual game requirements
-          maxWords: 80, // Adjusted to allow for more descriptive artifacts
+          minWords: 20,
+          maxWords: 75, // Test range (target: 20-36 words, but allow up to 75 to catch outliers)
           expectedElements: [golden.context.title]
         });
 
@@ -28,9 +27,9 @@ describe('Artifact Description Quality Tests', () => {
   });
 
   describe('Artifact Length Requirements', () => {
-    it('should accept descriptions in 20-80 word range', () => {
+    it('should accept descriptions in 20-75 word range (target: 20-36 words)', () => {
       const goodText = "A length of petrified root, veined with brittle crystal, lies half-claimed by the soil. Touch draws a hush from the ground—memory rising like cold breath from a cellar stair.";
-      const result = QualityMetrics.meetsLengthRequirement(goodText, 20, 80);
+      const result = QualityMetrics.meetsLengthRequirement(goodText, 20, 75);
 
       expect(result.valid).toBe(true);
       expect(result.wordCount).toBeGreaterThanOrEqual(20);
@@ -39,24 +38,24 @@ describe('Artifact Description Quality Tests', () => {
 
     it('should reject descriptions that are too short', () => {
       const shortText = "A mysterious artifact lies on the ground.";
-      const result = QualityMetrics.meetsLengthRequirement(shortText, 20, 80);
+      const result = QualityMetrics.meetsLengthRequirement(shortText, 20, 75);
 
       expect(result.valid).toBe(false);
       expect(result.wordCount).toBeLessThan(20);
     });
 
     it('should flag descriptions that are too verbose', () => {
-      // Generate a long text (over 80 words)
+      // Generate a long text (over 75 words - test range limit)
       const longText = "A mysterious artifact of ancient origin lies before you in this chamber of forgotten memories. " +
         "The craftsmanship speaks to ages long past when skilled artisans worked with dedication and precision. " +
         "Upon closer examination, intricate patterns reveal themselves across its weathered surface. " +
         "The weight of history seems to press down upon this remarkable object. " +
         "You sense that picking it up might reveal untold secrets of a civilization lost to time. " +
         "Its presence fills the room with an aura of power and mystery that cannot be denied.";
-      const result = QualityMetrics.meetsLengthRequirement(longText, 20, 80);
+      const result = QualityMetrics.meetsLengthRequirement(longText, 20, 75);
 
       expect(result.valid).toBe(false);
-      expect(result.wordCount).toBeGreaterThan(80);
+      expect(result.wordCount).toBeGreaterThan(75);
     });
   });
 

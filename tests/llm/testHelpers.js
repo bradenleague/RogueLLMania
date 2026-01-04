@@ -440,50 +440,6 @@ export const QualityMetrics = {
 };
 
 /**
- * Mock LLM responses for testing without actual model inference
- */
-export class MockLLMGenerator {
-  constructor() {
-    this.responses = new Map();
-    this.callCount = 0;
-  }
-
-  /**
-   * Set a mock response for a specific prompt pattern
-   */
-  setMockResponse(promptPattern, response) {
-    this.responses.set(promptPattern, response);
-  }
-
-  /**
-   * Generate a mock response
-   */
-  async generate(prompt) {
-    this.callCount++;
-
-    // Find matching pattern
-    for (const [pattern, response] of this.responses.entries()) {
-      if (prompt.includes(pattern)) {
-        return typeof response === 'function' ? response(prompt) : response;
-      }
-    }
-
-    // Default response
-    return {
-      text: '<description>A mysterious chamber unfolds before you, its ancient stones whispering secrets of ages past. Shadows dance along the walls as you step forward into the unknown.</description>'
-    };
-  }
-
-  /**
-   * Reset call count and responses
-   */
-  reset() {
-    this.callCount = 0;
-    this.responses.clear();
-  }
-}
-
-/**
  * Create a mock map for testing
  */
 export function createMockMap(width = 40, height = 20, tileType = 'stone') {
